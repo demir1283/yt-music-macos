@@ -1,0 +1,297 @@
+import SwiftUI
+import Observation
+
+struct BrowseTarget: Hashable {
+    var browseId: String
+    var params: String?
+    var kind: String
+    var title: String?
+
+    static let likedSongs = BrowseTarget(browseId: "VLLM", params: nil, kind: "playlist", title: "Beğenilen Müzikler")
+}
+
+/// Top-level destinations in the sidebar.
+enum SidebarItem: Hashable {
+    case search
+    case home
+    case explore
+    case charts
+    case moods
+    case newReleases
+    case podcasts
+    case library
+    case liked
+    case history
+    case playlist(BrowseTarget)
+
+    var title: String {
+        switch self {
+        case .search: return "Ara"
+        case .home: return "Ana Sayfa"
+        case .explore: return "Keşfet"
+        case .charts: return "Listeler"
+        case .moods: return "Ruh Hali ve Türler"
+        case .newReleases: return "Yeni Çıkanlar"
+        case .podcasts: return "Podcast'ler"
+        case .library: return "Kitaplık"
+        case .liked: return "Beğenilen Müzikler"
+        case .history: return "Geçmiş"
+        case .playlist(let t): return t.title ?? "Çalma Listesi"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .search: return "magnifyingglass"
+        case .home: return "house"
+        case .explore: return "globe"
+        case .charts: return "chart.line.uptrend.xyaxis"
+        case .moods: return "theatermasks"
+        case .newReleases: return "sparkles"
+        case .podcasts: return "mic"
+        case .library: return "square.stack"
+        case .liked: return "heart.fill"
+        case .history: return "clock.arrow.circlepath"
+        case .playlist: return "music.note.list"
+        }
+    }
+
+    /// Generic YouTube Music browse page behind this item, if any.
+    var browseTarget: BrowseTarget? {
+        switch self {
+        case .explore: return BrowseTarget(browseId: "FEmusic_explore", params: nil, kind: "browse", title: title)
+        case .charts: return BrowseTarget(browseId: "FEmusic_charts", params: nil, kind: "browse", title: title)
+        case .moods: return BrowseTarget(browseId: "FEmusic_moods_and_genres", params: nil, kind: "browse", title: title)
+        case .newReleases: return BrowseTarget(browseId: "FEmusic_new_releases", params: nil, kind: "browse", title: title)
+        case .podcasts: return BrowseTarget(browseId: "FEmusic_podcasts", params: nil, kind: "browse", title: title)
+        case .history: return BrowseTarget(browseId: "FEmusic_history", params: nil, kind: "browse", title: title)
+        case .liked: return .likedSongs
+        case .playlist(let t): return t
+        default: return nil
+        }
+    }
+}
+
+enum PanelMode: Hashable {
+    case nowPlaying
+    case lyrics
+    case queue
+}
+
+enum LibraryFilter: String, CaseIterable, Identifiable {
+    case playlists = "Çalma Listeleri"
+    case albums = "Albümler"
+    case artists = "Sanatçılar"
+    var id: String { rawValue }
+}
+
+/// UI-level state: sidebar selection, navigation stack, side panels, search text.
+@MainActor
+@Observable
+final class AppModel {
+    static let shared = AppModel()
+
+    let engine: YTMusic
+
+    var section: SidebarItem = .home
+    var path: [BrowseTarget] = []
+    /// Dominant colour of the current artwork (panel + player bar take it on).
+    var artTint: Color = .clear
+    var panelVisible = true
+    /// Lyrics section inside the side panel (toggled from the player bar).
+    var showLyrics = true
+    /// The Ayarlar sheet.
+    var showSettings = false
+    /// "Çalma listesine ekle" sheet for this song.
+    var addToPlaylistTarget: PlaylistTarget?
+    /// "Yeni çalma listesi" / "Çalma listesini düzenle" sheet.
+    var playlistEditor: PlaylistEditorMode?
+    var libraryFilter: LibraryFilter = .playlists
+    var searchQuery = ""
+    var searchFocusToken = 0
+
+
+    private init() {
+        engine = YTMusic.shared
+    }
+
+    // MARK: Navigation
+
+    /// Bumped when "Ana Sayfa" is clicked while already there: back to the "Tümü" chip.
+    var homeResetToken = 0
+
+    func select(_ item: SidebarItem) {
+        if item == .home && section == .home { homeResetToken += 1 }
+        section = item
+        path = []
+    }
+
+    func push(_ target: BrowseTarget) {
+        if path.last == target { return }
+        path.append(target)
+    }
+
+    func back() {
+        if !path.isEmpty { path.removeLast() }
+    }
+
+    func open(_ item: MediaItem) {
+        // Songs, videos and episodes always play — some carry a channel/browse id too,
+        // which used to open an empty page instead.
+        if item.isTrack && ["song", "video", "episode", "unknown"].contains(item.kind) {
+            play(item)
+        } else if let id = item.browseId, id.hasPrefix("MPED") {
+            // Episode page: nothing to show there, play the episode itself.
+            let vid = String(id.dropFirst(4))
+            engine.play(endpoint: item.play ?? watchEndpoint(videoId: vid, playlistId: nil), context: nil)
+        } else if let id = item.browseId {
+            push(BrowseTarget(browseId: id, params: item.params, kind: item.kind, title: item.title))
+        } else if item.isTrack {
+            play(item)
+        }
+    }
+
+    func openArtist(_ id: String) {
+        push(BrowseTarget(browseId: id, params: nil, kind: "artist", title: nil))
+    }
+
+    func openAlbum(_ id: String) {
+        push(BrowseTarget(browseId: id, params: nil, kind: "album", title: nil))
+    }
+
+    func openMore(_ more: MoreLink, title: String) {
+        if let id = more.browseId {
+            let kind: String
+            switch more.pageType ?? "" {
+            case "MUSIC_PAGE_TYPE_ALBUM": kind = "album"
+            case "MUSIC_PAGE_TYPE_PLAYLIST": kind = "playlist"
+            case "MUSIC_PAGE_TYPE_ARTIST", "MUSIC_PAGE_TYPE_USER_CHANNEL": kind = "artist"
+            default: kind = "browse"
+            }
+            push(BrowseTarget(browseId: id, params: more.params, kind: kind, title: title))
+        } else if let q = more.query {
+            searchQuery = q
+            select(.search)
+        }
+    }
+
+    func focusSearch() {
+        select(.search)
+        searchFocusToken += 1
+    }
+
+    func toggleLyrics() {
+        guard LyricsCenter.shared.available(for: engine.track?.videoId) else { return }
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.88)) {
+            if !panelVisible {
+                panelVisible = true
+                showLyrics = true
+            } else {
+                showLyrics.toggle()
+            }
+        }
+    }
+
+    func togglePanel() {
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.88)) { panelVisible.toggle() }
+    }
+
+    var isPanelVisible: Bool {
+        get { panelVisible }
+        set { panelVisible = newValue }
+    }
+
+    // MARK: Playback
+
+    func play(_ item: MediaItem, context: String? = nil) {
+        if let ep = item.play {
+            engine.play(endpoint: ep, context: context)
+        } else if let videoId = item.videoId {
+            engine.play(endpoint: watchEndpoint(videoId: videoId, playlistId: context), context: nil)
+        } else if let pl = item.playlistId {
+            engine.play(endpoint: watchPlaylistEndpoint(pl), context: nil)
+        } else if let id = item.browseId {
+            // Album / artist without a direct play endpoint: load the page and play from it.
+            Task {
+                guard let page = try? await engine.browse(id, params: item.params) else { return }
+                if let ep = page.header?.play ?? page.header?.shuffle {
+                    engine.play(endpoint: ep, context: nil)
+                } else if let first = page.sections.flatMap(\.items).first(where: { $0.isTrack }), let ep = first.play {
+                    engine.play(endpoint: ep, context: nil)
+                }
+            }
+        }
+    }
+
+    func shuffle(_ item: MediaItem) {
+        if let pl = item.playlistId {
+            engine.play(endpoint: watchPlaylistEndpoint(pl, params: "wAEB"), context: nil)
+        } else {
+            play(item)
+        }
+    }
+
+    func addToPlaylist(_ item: MediaItem) {
+        guard let v = item.videoId else { return }
+        addToPlaylistTarget = PlaylistTarget(videoId: v, title: item.title,
+                                       subtitle: item.artists.map(\.name).joined(separator: ", "), thumbnail: item.thumbnail)
+    }
+
+    func addCurrentToPlaylist() {
+        guard let t = engine.track else { return }
+        addToPlaylistTarget = PlaylistTarget(videoId: t.videoId, title: t.title, subtitle: t.artist, thumbnail: t.artwork)
+    }
+
+    func startRadio(_ item: MediaItem) {
+        guard let v = item.videoId else { return }
+        engine.play(endpoint: watchEndpoint(videoId: v, playlistId: "RDAMVM" + v), context: nil)
+    }
+
+    // MARK: Data
+
+    /// YouTube Music no longer serves "FEmusic_podcasts" (404). Try the podcasts page ids
+    /// it uses now, then fall back to the home page's own "Podcast'ler" chip — the same
+    /// feed the website shows for podcasts.
+    private func podcastsPage() async throws -> BrowsePage {
+        for id in ["FEmusic_non_music_audio", "FEmusic_podcasts"] {
+            if let p = try? await engine.browse(id, params: nil), !p.sections.isEmpty { return p }
+        }
+        let home = try await engine.home(params: nil)
+        let tr = Locale(identifier: "tr_TR")
+        if let chip = home.chips.first(where: { $0.title.lowercased(with: tr).contains("podcast") }),
+           chip.params != nil || chip.browseId != nil {
+            return try await engine.home(params: chip.params, browseId: chip.browseId)
+        }
+        throw EngineError.js("Bu hesapta podcast sayfası bulunamadı.")
+    }
+
+    func page(for target: BrowseTarget, force: Bool = false) async throws -> BrowsePage {
+        // No page cache: every page is fetched fresh and nothing is kept once you leave it.
+        let page = target.browseId == "FEmusic_podcasts"
+            ? try await podcastsPage()
+            : try await engine.browse(target.browseId, params: target.params)
+        return page
+    }
+}
+
+/// The song being added to a playlist.
+struct PlaylistTarget: Identifiable {
+    let videoId: String
+    let title: String
+    let subtitle: String
+    let thumbnail: String?
+    var id: String { videoId }
+}
+
+enum PlaylistEditorMode: Identifiable {
+    /// New playlist, optionally starting with a song.
+    case create(firstVideoId: String?)
+    case edit(playlistId: String, title: String, description: String, privacy: PlaylistPrivacy)
+
+    var id: String {
+        switch self {
+        case .create(let v): return "create-\(v ?? "")"
+        case .edit(let id, _, _, _): return "edit-\(id)"
+        }
+    }
+}
