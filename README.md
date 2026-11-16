@@ -151,7 +151,6 @@ If you edit `Tools/bridge.js`, copy it into `Engine/BridgeScript.swift` as well.
 
 - **Pages stay empty:** use **Reconnect** in the View menu; if YouTube shows a consent page, open YouTube Music in the browser once (⇧⌘Y).
 - **Diagnostics:** `defaults write local.encore.player diagnosticLog -bool true` writes `YT Music.log` next to the app; `defaults delete local.encore.player diagnosticLog` turns it off. Read the log before sharing it anywhere.
-- **Performance:** `./profile.sh` measures CPU and memory and takes a 10-second sample (`profile.txt`).
 
 ## Credits
 

@@ -55,19 +55,8 @@ else
   echo "  (uyarı: Resources/ejs bulunamadı — Premium kalite için gerekli)"
 fi
 
-# App icon: Resources/AppIcon.icns if present, otherwise built from Resources/AppIcon.png
-if [ -f Resources/AppIcon.icns ]; then
-  cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
-elif [ -f Resources/AppIcon.png ]; then
-  ICONSET="$(mktemp -d)/AppIcon.iconset"
-  mkdir -p "$ICONSET"
-  for s in 16 32 128 256 512; do
-    sips -z $s $s Resources/AppIcon.png --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
-    d=$((s * 2))
-    sips -z $d $d Resources/AppIcon.png --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
-  done
-  iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
-fi
+# App icon
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 # Localizations: with these, macOS shows its own menus (Edit, View, Window, Help, Hide,
 # Quit…) in the system language instead of English.

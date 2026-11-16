@@ -973,9 +973,6 @@ final class YTMusic {
         startTrack(index)
     }
 
-    /// The queue is kept by the app itself; nothing to fetch.
-    func refreshQueue() async {}
-
     // MARK: - Media keys / Control Center
 
     func remoteSetPlaying(_ wantPlaying: Bool?) {

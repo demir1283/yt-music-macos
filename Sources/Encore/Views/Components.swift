@@ -500,22 +500,6 @@ extension View {
     func fadeIn() -> some View { modifier(FadeIn()) }
 }
 
-/// Pages slide up a few points and fade in when they appear.
-private struct PageEnter: ViewModifier {
-    @ViewState var shown = false
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(shown ? 1 : 0)
-            .offset(y: shown ? 0 : 12)
-            .scaleEffect(shown ? 1 : 0.99, anchor: .top)
-            .onAppear {
-                guard !shown else { return }
-                withAnimation(.spring(response: 0.42, dampingFraction: 0.9)) { shown = true }
-            }
-    }
-}
-
 /// The toolbar has no band of its own: the page is a rounded card below it.
 private struct ToolbarEdge: ViewModifier {
     func body(content: Content) -> some View {

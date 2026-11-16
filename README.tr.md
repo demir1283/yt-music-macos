@@ -150,7 +150,6 @@ Resources/          uygulama simgesi, yt-dlp-ejs
 
 - **Sayfalar boş kalıyor:** Görüntü menüsündeki **Bağlantıyı Yeniden Kur**'u kullan; YouTube bir onay sayfası gösteriyorsa YouTube Music'i bir kez tarayıcıda aç (⇧⌘Y).
 - **Tanılama:** `defaults write local.encore.player diagnosticLog -bool true` uygulamanın yanına `YT Music.log` yazar; `defaults delete local.encore.player diagnosticLog` kapatır. Günlüğü okumadan herkese açık paylaşma.
-- **Performans:** `./profile.sh` işlemci ve belleği ölçer, 10 saniyelik bir örnek alır (`profile.txt`).
 
 ## Teşekkürler
 

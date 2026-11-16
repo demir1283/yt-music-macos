@@ -5,18 +5,7 @@
 *.xcodeproj/
 DerivedData/
 
-# Local, personal or diagnostic files — never commit these
-profile.txt
-profile.sample.txt
+# Diagnostics and local files
 *.log
-_to_delete/
-Screenshots-raw/
 .env
-*.cookies
-*.binarycookies
-
-# macOS
 .DS_Store
-
-# Local publishing helper
-publish.sh
