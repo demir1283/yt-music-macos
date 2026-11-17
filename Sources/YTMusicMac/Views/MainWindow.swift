@@ -109,6 +109,7 @@ struct ToolbarSearchField: View {
             TextField("Şarkı, sanatçı, albüm, podcast ara", text: $app.searchQuery)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
+                .lineLimit(1)
                 .focused($focused)
                 .onSubmit { if app.section != .search { app.select(.search) } }
                 .onExitCommand { focused = false }   // Esc: stop typing, space plays again
@@ -137,6 +138,11 @@ struct ToolbarSearchField: View {
         .onHover { hover = $0 }
         .onTapGesture { focused = true }
         .onChange(of: app.searchQuery) { _, q in
+            // One line only: a line break (⌥↩, ⌃↩ or pasted text) becomes a space.
+            if q.contains(where: \.isNewline) {
+                app.searchQuery = q.split(whereSeparator: \.isNewline).joined(separator: " ")
+                return
+            }
             if !q.trimmingCharacters(in: .whitespaces).isEmpty && app.section != .search {
                 app.select(.search)
             }

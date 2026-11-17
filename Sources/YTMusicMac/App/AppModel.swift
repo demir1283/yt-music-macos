@@ -122,6 +122,9 @@ final class AppModel {
 
     func select(_ item: SidebarItem) {
         if item == .home && section == .home { homeResetToken += 1 }
+        // Leaving the search page clears the search field (opening a result keeps it, so
+        // Back returns to the same results).
+        if section == .search && item != .search { searchQuery = "" }
         section = item
         path = []
     }
