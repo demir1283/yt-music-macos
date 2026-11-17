@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     static private(set) weak var shared: AppDelegate?
     private weak var mainWindow: NSWindow?
     private var keyMonitor: Any?
+    private var clickMonitor: Any?
     private var isTerminating = false
 
     override init() {
@@ -48,13 +49,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 guard flags.isEmpty else { return false }
                 let engine = YTMusic.shared
                 if engine.webSheet != nil { return false }
-                if let responder = event.window?.firstResponder {
-                    if responder is NSText || responder is WKWebView { return false }
-                }
+                guard AppDelegate.shared?.isTyping(in: event.window) != true else { return false }
                 engine.togglePlay()
                 return true
             }
             return handled ? nil : event
+        }
+
+        // A click anywhere outside the search field ends typing there (as in Music), so the
+        // space bar is play/pause again.
+        clickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+            MainActor.assumeIsolated { AppDelegate.shared?.endTextEditing(clickedAt: event) }
+            return event
         }
     }
 
@@ -66,6 +72,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard mainWindow !== window else { return }
         mainWindow = window
         window.delegate = self
+        // AppKit gives the first text field (the toolbar search) the keyboard focus when the
+        // window opens, which would swallow the space bar: start with nothing focused.
+        Task { @MainActor [weak window] in
+            for wait: UInt64 in [0, 300_000_000] {
+                try? await Task.sleep(nanoseconds: wait)
+                guard let window else { return }
+                if let text = window.firstResponder as? NSText, text.string.isEmpty {
+                    window.makeFirstResponder(nil)
+                }
+            }
+        }
+    }
+
+    /// Whether a key typed in `window` should go to a text field instead of the player.
+    /// In the main window an empty field doesn't count: a leading space means nothing there,
+    /// and the search field can hold the focus without the user typing in it.
+    func isTyping(in window: NSWindow?) -> Bool {
+        guard let responder = window?.firstResponder else { return false }
+        if responder is WKWebView { return true }
+        guard let text = responder as? NSText else { return false }
+        if window === mainWindow { return !text.string.isEmpty }
+        return true
+    }
+
+    func endTextEditing(clickedAt event: NSEvent) {
+        guard let window = event.window, window === mainWindow,
+              let editor = window.firstResponder as? NSTextView, editor.isFieldEditor else { return }
+        if let field = editor.delegate as? NSView {
+            let frame = field.convert(field.bounds, to: nil).insetBy(dx: -6, dy: -6)
+            if frame.contains(event.locationInWindow) { return }
+        }
+        window.makeFirstResponder(nil)
     }
 
     func showMainWindow() {

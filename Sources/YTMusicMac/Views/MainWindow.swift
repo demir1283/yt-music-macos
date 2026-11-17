@@ -111,6 +111,7 @@ struct ToolbarSearchField: View {
                 .font(.system(size: 13))
                 .focused($focused)
                 .onSubmit { if app.section != .search { app.select(.search) } }
+                .onExitCommand { focused = false }   // Esc: stop typing, space plays again
             if !app.searchQuery.isEmpty {
                 Button {
                     app.searchQuery = ""
