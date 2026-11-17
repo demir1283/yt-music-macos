@@ -134,7 +134,7 @@ Akış adresi ──▶ JavaScriptCore'da yt-dlp-ejs (YouTube'un akış sınamas
 ```
 
 ```
-Sources/Encore/
+Sources/YTMusicMac/
   App/       giriş noktası, menüler, Dock menüsü, gezinme modeli
   Engine/    YTMusic (motor), NativeCore (JavaScriptCore + HTTP), StreamResolver,
              SigSolver, AudioPlayer, NowPlayingBridge, SyncedLyrics, Models
@@ -149,7 +149,7 @@ Resources/          uygulama simgesi, yt-dlp-ejs
 ## Sorun giderme
 
 - **Sayfalar boş kalıyor:** Görüntü menüsündeki **Bağlantıyı Yeniden Kur**'u kullan; YouTube bir onay sayfası gösteriyorsa YouTube Music'i bir kez tarayıcıda aç (⇧⌘Y).
-- **Tanılama:** `defaults write local.encore.player diagnosticLog -bool true` uygulamanın yanına `YT Music.log` yazar; `defaults delete local.encore.player diagnosticLog` kapatır. Günlüğü okumadan herkese açık paylaşma.
+- **Tanılama:** `defaults write io.github.demir1283.ytmusic diagnosticLog -bool true` uygulamanın yanına `YT Music.log` yazar; `defaults delete io.github.demir1283.ytmusic diagnosticLog` kapatır. Günlüğü okumadan herkese açık paylaşma.
 
 ## Teşekkürler
 

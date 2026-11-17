@@ -52,7 +52,7 @@ enum SyncedLyricsService {
     private static func run(_ url: URL?, duration: Double, title: String, artist: String) async -> [LyricLine]? {
         guard let url else { return nil }
         var req = URLRequest(url: url)
-        req.setValue("Encore/1.0 (macOS YouTube Music client)", forHTTPHeaderField: "User-Agent")
+        req.setValue("YTMusic-macOS/1.0 (https://github.com/demir1283/yt-music-macos)", forHTTPHeaderField: "User-Agent")
         req.timeoutInterval = 10
         guard let result = try? await NoCacheSession.shared.data(for: req) else { return nil }
         let (data, resp) = result

@@ -80,7 +80,7 @@ final class NativeCore {
     /// Calls one of the script's commands and returns its JSON result.
     func call(_ name: String, argsJSON: String) async throws -> String {
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
-            guard let api = ctx.objectForKeyedSubscript("__encore"), !api.isUndefined,
+            guard let api = ctx.objectForKeyedSubscript("__ytmusic"), !api.isUndefined,
                   let promise = api.invokeMethod("call", withArguments: [name, argsJSON]),
                   !promise.isUndefined, !promise.isNull else {
                 cont.resume(throwing: EngineError.notReady)
@@ -194,11 +194,9 @@ enum StorageCleanup {
         URLCache.shared = URLCache(memoryCapacity: 0, diskCapacity: 0)
         let fm = FileManager.default
         if let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first {
-            for name in ["Encore", "YT Music"] {
-                try? fm.removeItem(at: caches.appendingPathComponent(name))
-            }
+            try? fm.removeItem(at: caches.appendingPathComponent("YT Music"))
             // Everything in the app's cache folder goes, except the saved stream solver.
-            let own = caches.appendingPathComponent("local.encore.player")
+            let own = caches.appendingPathComponent(AppIdentity.bundleID)
             for item in (try? fm.contentsOfDirectory(at: own, includingPropertiesForKeys: nil)) ?? []
             where item.lastPathComponent != SigSolver.solverDir.lastPathComponent {
                 try? fm.removeItem(at: item)

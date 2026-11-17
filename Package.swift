@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "Encore",
+    name: "yt-music-macos",
     platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
-            name: "Encore",
-            path: "Sources/Encore",
+            name: "YTMusicMac",
+            path: "Sources/YTMusicMac",
             linkerSettings: [
                 .linkedFramework("WebKit"),
                 .linkedFramework("MediaPlayer"),

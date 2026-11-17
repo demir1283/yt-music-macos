@@ -135,7 +135,7 @@ Stream address ──▶ yt-dlp-ejs in JavaScriptCore (solves YouTube's stream c
 ```
 
 ```
-Sources/Encore/
+Sources/YTMusicMac/
   App/       app entry, menus, Dock menu, navigation model
   Engine/    YTMusic (the engine), NativeCore (JavaScriptCore + HTTP), StreamResolver,
              SigSolver, AudioPlayer, NowPlayingBridge, SyncedLyrics, Models
@@ -150,7 +150,7 @@ If you edit `Tools/bridge.js`, copy it into `Engine/BridgeScript.swift` as well.
 ## Troubleshooting
 
 - **Pages stay empty:** use **Reconnect** in the View menu; if YouTube shows a consent page, open YouTube Music in the browser once (⇧⌘Y).
-- **Diagnostics:** `defaults write local.encore.player diagnosticLog -bool true` writes `YT Music.log` next to the app; `defaults delete local.encore.player diagnosticLog` turns it off. Read the log before sharing it anywhere.
+- **Diagnostics:** `defaults write io.github.demir1283.ytmusic diagnosticLog -bool true` writes `YT Music.log` next to the app; `defaults delete io.github.demir1283.ytmusic diagnosticLog` turns it off. Read the log before sharing it anywhere.
 
 ## Credits
 

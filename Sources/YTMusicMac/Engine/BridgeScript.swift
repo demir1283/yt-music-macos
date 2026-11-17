@@ -5,7 +5,7 @@ enum BridgeScript {
     static let source: String = #"""
 (() => {
   'use strict';
-  if (window.__encore) return;
+  if (window.__ytmusic) return;
 
   // Runs inside the app's own JavaScript engine (JavaScriptCore) — there is no web
   // page. The app supplies HTTP (with the account's cookies) through __nativeHttp.
@@ -893,7 +893,7 @@ enum BridgeScript {
 
   };
 
-  window.__encore = {
+  window.__ytmusic = {
     async call(name, argsJSON) {
       const fn = E[name];
       if (!fn) throw new Error('Bilinmeyen komut: ' + name);

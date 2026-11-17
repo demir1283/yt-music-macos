@@ -1,13 +1,13 @@
 #!/bin/bash
-# Builds Encore.app next to this script.
+# Builds "YT Music.app" next to this script.
 #   ./build.sh            → release build
 #   ./build.sh --install  → also copies it to /Applications
 set -euo pipefail
 cd "$(dirname "$0")"
 
-APP_NAME="Encore"            # SwiftPM product / executable name
+APP_NAME="YTMusicMac"            # SwiftPM product / executable name
 DISPLAY_NAME="YT Music"      # name shown in Finder, Dock and the menu bar
-BUNDLE_ID="local.encore.player"
+BUNDLE_ID="io.github.demir1283.ytmusic"
 APP="$DISPLAY_NAME.app"
 VERSION="1.0.0"              # shown in "About YT Music"
 BUILD_NUMBER="1"
@@ -30,7 +30,7 @@ BIN_DIR="$(swift build -c release --show-bin-path)"
 echo "$TOOLCHAIN" > .build/.toolchain
 
 echo "▸ $APP paketleniyor…"
-rm -rf "$APP" "Encore.app"
+rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/$APP_NAME" "$APP/Contents/MacOS/$APP_NAME"
 

@@ -3,7 +3,7 @@ import AppKit
 import WebKit
 
 @main
-struct EncoreApp: App {
+struct YTMusicApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     private let model = AppModel.shared
 

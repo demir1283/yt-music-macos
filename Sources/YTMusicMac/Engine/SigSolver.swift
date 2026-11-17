@@ -18,7 +18,8 @@ actor SigSolver {
     /// version (≈1 MB). Older versions are deleted when a new one is saved.
     static let solverDir: URL = {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        return base.appendingPathComponent("local.encore.player/solver", isDirectory: true)
+        return base.appendingPathComponent(AppIdentity.bundleID, isDirectory: true)
+            .appendingPathComponent("solver", isDirectory: true)
     }()
 
     /// "/s/player/abcd1234/…/base.js" → canonical main-variant URL, as yt-dlp uses.
@@ -145,12 +146,12 @@ extension SigSolver {
 
 /// Diagnostics go to the system log. A file ("YT Music.log" next to the app) is written
 /// only while troubleshooting is switched on:
-///   defaults write local.encore.player diagnosticLog -bool true   (off: delete instead of write)
+///   defaults write io.github.demir1283.ytmusic diagnosticLog -bool true   (off: delete instead of write)
 enum EngineLog {
     private static let enabled = UserDefaults.standard.bool(forKey: "diagnosticLog")
     private static let url: URL = Bundle.main.bundleURL.deletingLastPathComponent()
         .appendingPathComponent("YT Music.log")
-    private static let queue = DispatchQueue(label: "encore.log")
+    private static let queue = DispatchQueue(label: "ytmusic.log")
 
     static func reset() {
         guard enabled else { return }
