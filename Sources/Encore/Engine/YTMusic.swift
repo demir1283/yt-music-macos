@@ -121,6 +121,13 @@ final class YTMusic {
 
     private init() {
         nowPlaying = NowPlayingBridge()
+        nowPlaying.snapshot = { [weak self] in
+            guard let self else { return nil }
+            return NowPlayingState(track: self.track, playing: self.isPlaying,
+                                   loading: self.isLoading || self.resolving,
+                                   position: self.position(at: Date()),
+                                   queueIndex: self.queueIndex, queueCount: self.items.count)
+        }
         nowPlaying.activate()
         if let v = UserDefaults.standard.object(forKey: "volume") as? Double { volume = min(100, max(0, v)) }
         Task { await self.boot(syncFromSignIn: false) }
@@ -570,7 +577,7 @@ final class YTMusic {
 
     private func pushNowPlaying() {
         lastNowPlayingPush = Date()
-        nowPlaying.update(track: track, playing: isPlaying, position: position(at: Date()))
+        nowPlaying.refresh()
     }
 
     // MARK: - Audio callbacks
@@ -589,15 +596,20 @@ final class YTMusic {
     private func audioState(playing: Bool, buffering: Bool) {
         guard !resolving else { return }
         let now = Date()
-        if isLoading != buffering { isLoading = buffering }
+        var changed = false
+        if isLoading != buffering {
+            isLoading = buffering
+            changed = true   // the widget's clock stops while buffering and resumes after
+        }
         if now > seekGuard, let audio {
             position = audio.currentTime
             positionDate = now
         }
         if now > playGuard, isPlaying != playing {
             isPlaying = playing
-            pushNowPlaying()
+            changed = true
         }
+        if changed { pushNowPlaying() }
     }
 
     private func audioEnded() {
