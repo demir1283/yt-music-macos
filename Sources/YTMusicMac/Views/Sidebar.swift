@@ -30,7 +30,7 @@ struct Sidebar: View {
                     ForEach(engine.library.playlists.filter { $0.browseId != "VLLM" && $0.browseId != "VLSE" }) { item in
                         let target = BrowseTarget(browseId: item.browseId ?? "", params: item.params,
                                                   kind: "playlist", title: item.title)
-                        SidebarRow(title: item.title, systemImage: "music.note.list",
+                        SidebarRow(title: item.title, systemImage: "music.note.list", artwork: item.thumbnail,
                                    isSelected: app.section == .playlist(target)) {
                             app.select(.playlist(target))
                         }
@@ -68,21 +68,24 @@ struct Sidebar: View {
     }
 }
 
-/// Plain-button sidebar row with a neutral selection pill and accent-coloured icon.
+/// Plain-button sidebar row with a neutral selection pill and an accent-coloured icon or,
+/// for playlists, a small cover (as in Apple Music). Every row has the same height, so
+/// covers and icons line up.
 struct SidebarRow: View {
     let title: String
     let systemImage: String
+    /// A playlist's cover; without one the icon is shown.
+    var artwork: String? = nil
     let isSelected: Bool
     let action: () -> Void
+
+    private static let artSide: CGFloat = 20
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 9) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 14, weight: .medium))
-                    .symbolRenderingMode(.monochrome)
-                    .foregroundStyle(Color.brand)
-                    .frame(width: 22, alignment: .center)
+                leading
+                    .frame(width: 22, height: Self.artSide, alignment: .center)
                 Text(title)
                     .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
                     .lineLimit(1)
@@ -104,6 +107,23 @@ struct SidebarRow: View {
                 }
             }
         )
+    }
+
+    @ViewBuilder private var leading: some View {
+        if let artwork, !artwork.isEmpty {
+            RemoteImage(url: artwork, placeholderIcon: systemImage, placeholderSize: 10)
+                .frame(width: Self.artSide, height: Self.artSide)
+                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                )
+        } else {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .medium))
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(Color.brand)
+        }
     }
 }
 

@@ -70,6 +70,7 @@ final class ImageLoader: @unchecked Sendable {
 struct RemoteImage: View {
     let url: String?
     var placeholderIcon: String = "music.note"
+    var placeholderSize: CGFloat = 20
 
     @ViewState var image: NSImage? = nil
     @ViewState var loadedURL: String? = nil
@@ -105,7 +106,7 @@ struct RemoteImage: View {
                             .transition(.opacity)
                     } else {
                         Image(systemName: placeholderIcon)
-                            .font(.system(size: 20, weight: .regular))
+                            .font(.system(size: placeholderSize, weight: .regular))
                             .foregroundStyle(.tertiary)
                             .transition(.opacity)
                     }
