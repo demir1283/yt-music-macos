@@ -5,6 +5,9 @@ struct SettingsView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     private let theme = ThemeStore.shared
+    @AppStorage("curateRadio") private var curateRadio = true
+    @AppStorage(ListeningLog.enabledKey) private var keepHistory = true
+    @ViewState var historyBytes = ListeningLog.shared.byteCount
 
     var body: some View {
         @Bindable var theme = theme
@@ -66,6 +69,35 @@ struct SettingsView: View {
                     .opacity(theme.background.isAnimated ? 1 : 0.4)
                 }
 
+                GridRow(alignment: .top) {
+                    label("Radyo").padding(.top, 1)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle("Resmi sürümler önce, kullanıcı yüklemeleri sona", isOn: $curateRadio)
+                        Text("Klibi olan şarkılar şarkı sürümüyle çalar, aynı şarkı bir kez çalar. 20 dakikadan uzun setler ve mix'ler olduğu gibi kalır. Seçtiğin listelere ve albümlere dokunulmaz.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                GridRow(alignment: .top) {
+                    label("Geçmiş").padding(.top, 1)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle("Dinleme geçmişini bu Mac'te tut", isOn: $keepHistory)
+                        HStack(spacing: 10) {
+                            Text("Öneriler bundan öğrenir; Mac'ten çıkmaz. \(historySize)")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                            Button("Geçmişi Sil") {
+                                ListeningLog.shared.erase()
+                                historyBytes = 0
+                            }
+                            .controlSize(.small)
+                            .disabled(historyBytes == 0)
+                        }
+                    }
+                }
+
                 GridRow {
                     label("Ses")
                     Text(app.engine.streamInfo.isEmpty ? "Henüz bir şey çalınmadı" : app.engine.streamInfo)
@@ -80,6 +112,11 @@ struct SettingsView: View {
         .padding(22)
         .frame(width: 560)
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var historySize: String {
+        historyBytes == 0 ? "Şu an boş."
+            : "Şu an " + ByteCountFormatter.string(fromByteCount: Int64(historyBytes), countStyle: .file) + "."
     }
 
     private func label(_ text: String) -> some View {

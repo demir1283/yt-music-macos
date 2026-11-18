@@ -340,7 +340,7 @@ struct SectionTitle: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             if let subtitle, !subtitle.isEmpty {
-                Text(subtitle.uppercased())
+                Text(subtitle.uppercased(with: Locale(identifier: M.turkish ? "tr_TR" : "en_US")))
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
@@ -422,10 +422,19 @@ struct ItemMenu: View {
             }
             Button("Beğen") { app.engine.rate(videoId: v, status: "LIKE") }
             if app.engine.isDisliked(v) {
-                Button("Beğenmemeyi Geri Al") { app.engine.rate(videoId: v, status: "INDIFFERENT") }
+                Button("Beğenmemeyi Geri Al") {
+                    app.engine.rate(videoId: v, status: "INDIFFERENT")
+                    app.unhide(item)
+                }
             } else {
-                Button("Beğenmedim (bana önerme)") { app.engine.rate(videoId: v, status: "DISLIKE") }
+                Button("Beğenmedim (bana önerme)") {
+                    app.engine.rate(videoId: v, status: "DISLIKE")
+                    app.hide(item)
+                }
             }
+        } else if !item.isTrack, item.kind != "category" {
+            Divider()
+            Button("Bana önerme") { app.hide(item) }
         }
         if !item.artists.isEmpty {
             Divider()

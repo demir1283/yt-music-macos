@@ -65,7 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        YTMusic.shared.saveSessionNow()
+        YTMusic.shared.prepareToQuit()
     }
 
     func register(_ window: NSWindow) {
@@ -232,6 +232,8 @@ struct AppCommands: Commands {
 
         CommandGroup(after: .toolbar) {
             Divider()
+            Button(M.t("Yenile", "Refresh")) { model.refresh() }
+                .keyboardShortcut("r", modifiers: .command)
             Button(M.t("YouTube Music'i Tarayıcıda Aç", "Open YouTube Music in Browser")) { NSWorkspace.shared.open(YTMusic.homeURL) }
                 .keyboardShortcut("y", modifiers: [.command, .shift])
             Button(M.t("Kitaplığı Yenile", "Refresh Library")) { Task { await model.engine.loadLibrary() } }

@@ -31,6 +31,12 @@ struct MediaItem: Codable, Identifiable, Hashable {
     let color: String?
     /// Entry id inside a playlist (needed to remove or move it).
     var setVideoId: String? = nil
+    /// A wide picture behind the item (an artist's banner), for the home page's cards.
+    var banner: String? = nil
+    /// The channel's picture beside the title (home page notifications).
+    var avatar: String? = nil
+    /// A notification not read yet on YouTube: a dot before the title.
+    var unread: Bool? = nil
 
     var id: String { uid }
     var isTrack: Bool { videoId != nil }
@@ -45,6 +51,8 @@ struct MediaItem: Codable, Identifiable, Hashable {
         case "episode": return "Bölüm"
         case "video": return "Video"
         case "song": return "Şarkı"
+        case "mix": return "Mix"
+        case "artistradio": return "Radyo"
         default: return ""
         }
     }
@@ -52,6 +60,9 @@ struct MediaItem: Codable, Identifiable, Hashable {
     var bylineText: String {
         artists.isEmpty ? subtitle : artists.map(\.name).joined(separator: ", ")
     }
+
+    /// Identifies a recommendation across pages ("Bana önerme").
+    var recommendationKey: String { videoId ?? playlistId ?? browseId ?? uid }
 }
 
 struct MoreLink: Codable, Hashable {
@@ -220,7 +231,14 @@ struct QueueEntry: Codable, Identifiable, Equatable {
     var artists: [ArtistRef]? = nil
     var album: AlbumRef? = nil
     var like: String? = nil
+    /// YouTube's kind of upload: MUSIC_VIDEO_TYPE_ATV (song), _OMV (music video), _UGC
+    /// (user upload)…
+    var videoType: String? = nil
+    /// The other half of a song / music video pair, when YouTube Music offers one.
+    var alt: [QueueEntry]? = nil
     var id: Int { index }
+    /// Identity in lists that animate removals (the index shifts when a row goes).
+    var rowKey: String { videoId ?? "\(index)-\(title)" }
 
     /// "3:45" / "1:02:03" → seconds.
     var seconds: Double {
@@ -233,6 +251,61 @@ struct WatchQueue: Codable {
     let items: [QueueEntry]
     let current: Int
     let continuation: String?
+    /// A radio or mix YouTube Music builds on its own (the app may arrange it).
+    var radio: Bool? = nil
+}
+
+/// Videos and mixes from regular YouTube (home feed or "up next").
+struct YouTubeFeed: Decodable {
+    let items: [YouTubeVideo]
+    /// Filtered to music by YouTube itself.
+    let musicOnly: Bool
+}
+
+struct YouTubeVideo: Decodable {
+    let item: MediaItem
+    let channel: String
+    let channelId: String?
+    let seconds: Double
+    let mix: Bool
+    /// How long ago it was uploaded, in days (when YouTube shows it).
+    let ageDays: Double?
+    /// The channel's picture (when YouTube sends it).
+    let avatar: String?
+}
+
+/// One entry of YouTube's notifications (the bell), see ytNotifications in bridge.js.
+struct YouTubeNotification: Decodable {
+    /// video (upload, premiere, live stream), short, comment, post, other.
+    let kind: String
+    let videoId: String?
+    let title: String
+    /// What comes before the title: "Tomorrowland yükledi".
+    let lead: String
+    let ageDays: Double?
+    let ageText: String
+    let read: Bool
+    let thumbnail: String?
+    let avatar: String?
+}
+
+struct NotificationFeed: Decodable {
+    let items: [YouTubeNotification]
+    /// Counts and field names only, for the diagnostic log.
+    let summary: String
+}
+
+/// A video's channel and YouTube category (see ytVideoInfo in bridge.js).
+struct YouTubeVideoInfo: Decodable {
+    let channelId: String?
+    let channel: String
+    let category: String?
+    let seconds: Double
+}
+
+/// A listening report started with YouTube (see trackStart in bridge.js).
+struct ListenTicket: Decodable {
+    let session: String?
 }
 
 struct BootInfo: Codable {

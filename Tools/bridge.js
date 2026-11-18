@@ -510,18 +510,31 @@
     return -1;
   }
 
-  // Every playable row of a watch queue; for song/video pairs only the version that plays.
-  function panelItems(root) {
+  // Every playable row of a watch queue: the version that plays and, for song/video
+  // pairs, its counterpart (the app can then prefer the song over the music video).
+  function panelRows(root) {
     const out = [];
     (function walk(n) {
       if (!n || typeof n !== 'object') return;
       if (Array.isArray(n)) { n.forEach(walk); return; }
-      const p = n.playlistPanelVideoRenderer || n.playlistPanelVideoWrapperRenderer?.primaryRenderer?.playlistPanelVideoRenderer;
-      if (p) { if (p.videoId) out.push(p); return; }
+      const w = n.playlistPanelVideoWrapperRenderer;
+      const p = n.playlistPanelVideoRenderer || w?.primaryRenderer?.playlistPanelVideoRenderer;
+      if (p) {
+        if (p.videoId) {
+          const alt = w?.counterpart?.[0]?.counterpartRenderer?.playlistPanelVideoRenderer;
+          out.push({ p, alt: alt?.videoId ? alt : null });
+        }
+        return;
+      }
       for (const k in n) { if (!SKIP.has(k)) walk(n[k]); }
     })(root);
     return out;
   }
+
+  const rowsToEntries = (rows) => rows.map((x, i) => queueEntry(x.p, i, x.alt));
+
+  // Radios and mixes YouTube Music builds on its own (not its editorial "RDCLAK" lists).
+  const isRadio = (id) => /^RD/.test(id || '') && !/^RDCLAK/.test(id || '');
 
   function panelToken(root) {
     const p = findKey(root, 'playlistPanelRenderer') || findKey(root, 'playlistPanelContinuation');
@@ -529,11 +542,13 @@
     return c?.nextRadioContinuationData?.continuation || c?.nextContinuationData?.continuation || null;
   }
 
-  function queueEntry(p, i) {
+  function queueEntry(p, i, alt) {
     const runs = p.longBylineText?.runs || [];
     const seen = new Set();
     const we = p.navigationEndpoint?.watchEndpoint;
     return {
+      videoType: we?.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig?.musicVideoType || null,
+      alt: alt ? [queueEntry(alt, i, null)] : null,
       index: i,
       title: text(p.title),
       subtitle: text(p.shortBylineText) || text(p.longBylineText),
@@ -549,7 +564,296 @@
     };
   }
 
+  // ───────────────────────────── YouTube (www) ─────────────────────────────
+  // The same account on regular YouTube: its home feed and "up next" are where DJ sets,
+  // live recordings and mixes get recommended. Same cookies, YouTube's WEB client.
+  const WEB_ORIGIN = 'https://www.youtube.com';
+  const WEB_VERSION = '2.20251114.01.00';
+
+  async function webApi(endpoint, body) {
+    const cfg = window.ytcfg;
+    const base = cfg.get('INNERTUBE_CONTEXT') || {};
+    const client = Object.assign({}, base.client || {}, { clientName: 'WEB', clientVersion: WEB_VERSION, originalUrl: WEB_ORIGIN + '/' });
+    delete client.musicAppInfo;
+    const context = Object.assign({}, base, { client });
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-Goog-AuthUser': String(cfg.get('SESSION_INDEX') ?? 0),
+      'X-Origin': WEB_ORIGIN,
+      'X-Youtube-Client-Name': '1',
+      'X-Youtube-Client-Version': WEB_VERSION,
+      Origin: WEB_ORIGIN,
+      Referer: WEB_ORIGIN + '/',
+    };
+    const visitor = cfg.get('VISITOR_DATA');
+    if (visitor) headers['X-Goog-Visitor-Id'] = visitor;
+    const pageId = cfg.get('DELEGATED_SESSION_ID');
+    if (pageId) headers['X-Goog-PageId'] = pageId;
+    const out = await http(`${WEB_ORIGIN}/youtubei/v1/${endpoint}?prettyPrint=false`, 'POST', headers,
+      JSON.stringify(Object.assign({ context }, body || {})), cfg.get('LOGGED_IN') ? WEB_ORIGIN : '');
+    if (out.status < 200 || out.status >= 300) {
+      // YouTube's own reason ("Request contains an invalid argument." …), for the log.
+      let reason = '';
+      try { reason = JSON.parse(out.body)?.error?.message || ''; } catch (e) { /* not JSON */ }
+      throw new Error(`YouTube ${out.status} hatası (${endpoint})${reason ? ': ' + reason : ''}`);
+    }
+    return JSON.parse(out.body);
+  }
+
+  // "1:02:33" → 3753; anything else (live, premieres, "Mix") → 0.
+  function clockSeconds(t) {
+    const m = String(t || '').trim().match(/^(\d+):(\d{2})(?::(\d{2}))?$/);
+    if (!m) return 0;
+    return m[3] != null ? (+m[1] * 3600 + +m[2] * 60 + +m[3]) : (+m[1] * 60 + +m[2]);
+  }
+
+  // "3 gün önce", "2 weeks ago" → days (0 for minutes and hours); null when not shown.
+  function ageDays(t) {
+    const m = String(t || '').toLowerCase()
+      .match(/(\d+)\s*(saniye|dakika|saat|gün|hafta|ay|yıl|second|minute|hour|day|week|month|year)/);
+    if (!m) return null;
+    const unit = { saniye: 0, dakika: 0, saat: 0, second: 0, minute: 0, hour: 0, 'gün': 1, day: 1,
+      hafta: 7, week: 7, ay: 30, month: 30, 'yıl': 365, year: 365 }[m[2]];
+    return unit == null ? null : +m[1] * unit;
+  }
+
+  function ytVideo(id, title, channel, channelId, length, thumb, age, avatar) {
+    const seconds = clockSeconds(length);
+    if (!id || !title || !seconds) return null;
+    return {
+      channel, channelId: channelId || null, seconds, mix: false, ageDays: ageDays(age), avatar: avatar || null,
+      item: {
+        uid: nextId('yt'), kind: 'video', title, subtitle: [channel, length].filter(Boolean).join(' • '),
+        thumbnail: thumb || `https://i.ytimg.com/vi/${id}/mqdefault.jpg`, videoId: id, browseId: null, params: null,
+        playlistId: null, artists: [], album: null, duration: length, explicit: false,
+        play: JSON.stringify({ watchEndpoint: { videoId: id } }), wide: true, color: null,
+      },
+    };
+  }
+
+  // A YouTube Mix (an "RD…" list YouTube builds around a song or artist).
+  function ytMix(listId, firstVideo, title, channel, thumb) {
+    if (!listId || !firstVideo || !title) return null;
+    return {
+      channel: channel || '', channelId: null, seconds: 0, mix: true, ageDays: null,
+      item: {
+        uid: nextId('ytmix'), kind: 'mix', title, subtitle: channel || 'YouTube Mix',
+        thumbnail: thumb || `https://i.ytimg.com/vi/${firstVideo}/mqdefault.jpg`, videoId: null, browseId: null, params: null,
+        playlistId: listId, artists: [], album: null, duration: null, explicit: false,
+        play: JSON.stringify({ watchEndpoint: { videoId: firstVideo, playlistId: listId } }), wide: true, color: null,
+      },
+    };
+  }
+
+  function fromVideoRenderer(v) {
+    const owner = v.ownerText || v.shortBylineText || v.longBylineText;
+    const length = text(v.lengthText) || text(findKey(v.thumbnailOverlays, 'thumbnailOverlayTimeStatusRenderer')?.text);
+    return ytVideo(v.videoId, text(v.title), text(owner),
+      owner?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId, length, bestThumb(v.thumbnail, 720),
+      text(v.publishedTimeText), bestThumb(v.channelThumbnailSupportedRenderers || v.channelThumbnail, 176));
+  }
+
+  function fromLockup(l) {
+    const meta = l.metadata?.lockupMetadataViewModel;
+    const title = meta?.title?.content || '';
+    const rows = meta?.metadata?.contentMetadataViewModel?.metadataRows || [];
+    const parts = rows.flatMap((r) => (r.metadataParts || []).map((p) => p.text?.content || '')).filter(Boolean);
+    const thumb = bestThumb(l.contentImage, 720);
+    if (l.contentType === 'LOCKUP_CONTENT_TYPE_VIDEO') {
+      const badge = findKey(l.contentImage, 'thumbnailBadgeViewModel');
+      // The channel's picture: view models list it under "sources" (largest last).
+      const sources = findKey(meta?.image, 'sources');
+      const avatar = Array.isArray(sources) && sources.length ? sources[sources.length - 1].url : null;
+      return ytVideo(l.contentId, title, parts[0] || '', findKey(meta, 'browseEndpoint')?.browseId, badge?.text || '', thumb,
+        parts.find((p) => ageDays(p) != null) || '', avatar);
+    }
+    if (l.contentType === 'LOCKUP_CONTENT_TYPE_PLAYLIST' && /^RD/.test(l.contentId || '')) {
+      return ytMix(l.contentId, findKey(l, 'watchEndpoint')?.videoId, title, parts[0] || '', thumb);
+    }
+    return null;
+  }
+
+  // Videos and YouTube Mixes in a response; Shorts, ads, live streams and the rest left out.
+  const YT_SKIP = ['reelShelfRenderer', 'reelItemRenderer', 'shortsLockupViewModel', 'adSlotRenderer',
+    'promotedSparklesWebRenderer', 'feedFilterChipBarRenderer', 'chipCloudRenderer', 'statementBannerRenderer',
+    'brandVideoShelfRenderer', 'movieRenderer', 'radioRenderer'];
+
+  function ytItems(root) {
+    const out = [];
+    (function walk(n) {
+      if (!n || typeof n !== 'object') return;
+      if (Array.isArray(n)) { n.forEach(walk); return; }
+      for (const k of YT_SKIP) if (n[k]) return;
+      const v = n.videoRenderer || n.compactVideoRenderer || n.gridVideoRenderer;
+      if (v && v.videoId) { const it = fromVideoRenderer(v); if (it) out.push(it); return; }
+      if (n.lockupViewModel && n.lockupViewModel.contentId) { const it = fromLockup(n.lockupViewModel); if (it) out.push(it); return; }
+      for (const k in n) { if (!SKIP.has(k)) walk(n[k]); }
+    })(root);
+    return out;
+  }
+
+  // One entry of the bell menu. kind: video (an upload, premiere or live stream), short,
+  // comment (a reply or mention under a video), post (community) or other.
+  function fromNotification(n) {
+    const ep = n.navigationEndpoint || {};
+    const url = ep.commandMetadata?.webCommandMetadata?.url || '';
+    const videoId = ep.watchEndpoint?.videoId || (url.match(/[?&]v=([\w-]{11})/) || [])[1] || null;
+    let kind = 'other';
+    if (ep.reelWatchEndpoint || /\/shorts\//.test(url)) kind = 'short';
+    else if (videoId && /[?&]lc=/.test(url)) kind = 'comment';
+    else if (videoId) kind = 'video';
+    else if (ep.browseEndpoint || /\/post\//.test(url)) kind = 'post';
+    // "Tomorrowland yükledi: Title" → lead "Tomorrowland yükledi", title "Title".
+    const message = text(n.shortMessage);
+    const sep = message.indexOf(': ');
+    const age = text(n.sentTimeText);
+    return {
+      kind, videoId: kind === 'video' ? videoId : null,
+      title: sep > 0 ? message.slice(sep + 2) : message, lead: sep > 0 ? message.slice(0, sep) : '',
+      ageDays: ageDays(age), ageText: age, read: !!n.read,
+      thumbnail: bestThumb(n.videoThumbnail, 720), avatar: bestThumb(n.thumbnail, 176),
+    };
+  }
+
+  const ytKey = (x) => x.item.videoId || x.item.playlistId;
+  function uniqueYt(list) {
+    const seen = new Set();
+    return list.filter((x) => !seen.has(ytKey(x)) && seen.add(ytKey(x)));
+  }
+
+  const MUSIC_CHIP = /^(müzik|music|musik|musique|música|musica|muziek|muzyka)$/i;
+
+  function ytChipToken(r, re) {
+    const bar = findKey(r, 'feedFilterChipBarRenderer');
+    for (const c of bar?.contents || []) {
+      const ch = c.chipCloudChipRenderer;
+      if (ch && re.test(text(ch.text).trim())) return findKey(ch.navigationEndpoint, 'continuationCommand')?.token || null;
+    }
+    return null;
+  }
+
+  const ytNextToken = (r) => findKey(findKey(r, 'continuationItemRenderer'), 'continuationCommand')?.token || null;
+
+  // Listening sessions: report id (cpn) → the song's watchtime address.
+  const listens = new Map();
+
+  function statsPing(base, extra) {
+    const cfg = window.ytcfg;
+    return http(`${base}&ver=2&c=WEB_REMIX${extra}`, 'GET',
+      { 'X-Goog-AuthUser': String(cfg.get('SESSION_INDEX') ?? 0), Origin: location.origin, Referer: location.origin + '/' }, '', location.origin);
+  }
+
   const E = {
+    // Regular YouTube's home feed, with its "Müzik" filter when YouTube offers it.
+    async ytHome() {
+      let r = await webApi('browse', { browseId: 'FEwhat_to_watch' });
+      let musicOnly = false;
+      const token = ytChipToken(r, MUSIC_CHIP);
+      if (token) {
+        try { r = await webApi('browse', { continuation: token }); musicOnly = true; } catch (e) { /* unfiltered */ }
+      }
+      const items = ytItems(r);
+      let next = ytNextToken(r);
+      for (let i = 0; i < 4 && next && items.length < 120; i++) {
+        try {
+          const c = await webApi('browse', { continuation: next });
+          items.push(...ytItems(c));
+          next = ytNextToken(c);
+        } catch (e) { break; }
+      }
+      return { items: uniqueYt(items), musicOnly };
+    },
+
+    // Latest uploads of the channels this account follows, newest first (YouTube's
+    // subscriptions feed): shows which followed artists put out something lately.
+    async ytSubscriptions() {
+      const r = await webApi('browse', { browseId: 'FEsubscriptions' });
+      const items = ytItems(r);
+      let next = ytNextToken(r);
+      // More pages until the uploads are over a month old.
+      for (let i = 0; i < 3 && next; i++) {
+        const last = items[items.length - 1];
+        if (last && last.ageDays != null && last.ageDays > 31) break;
+        try {
+          const c = await webApi('browse', { continuation: next });
+          items.push(...ytItems(c));
+          next = ytNextToken(c);
+        } catch (e) { break; }
+      }
+      return { items: uniqueYt(items), musicOnly: false };
+    },
+
+    // The bell's notifications, newest first, back to `days` days (the home page marks the
+    // uploads they announce as unread). Only read: nothing is marked as seen or read.
+    // `summary`: what came back (counts and field names, no content), for the diagnostic log.
+    async ytNotifications({ days }) {
+      const endpoint = 'notification/get_notification_menu';
+      const request = { notificationsMenuRequestType: 'NOTIFICATIONS_MENU_REQUEST_TYPE_INBOX' };
+      const items = [];
+      const kinds = {};
+      let fields = '';
+      let pages = 0;
+      const collect = (root) => {
+        (function walk(n) {
+          if (!n || typeof n !== 'object') return;
+          if (Array.isArray(n)) { n.forEach(walk); return; }
+          if (n.notificationRenderer) {
+            const r = n.notificationRenderer;
+            if (!fields) fields = Object.keys(r).sort().join(',');
+            const it = fromNotification(r);
+            kinds[it.kind] = (kinds[it.kind] || 0) + 1;
+            items.push(it);
+            return;
+          }
+          for (const k in n) { if (!SKIP.has(k)) walk(n[k]); }
+        })(root);
+        pages++;
+      };
+      const tokenOf = (r) => findKey(r, 'getNotificationMenuEndpoint')?.ctoken
+        || findKey(findKey(r, 'continuationItemRenderer'), 'continuationCommand')?.token || null;
+      let r = await webApi(endpoint, request);
+      collect(r);
+      let next = tokenOf(r);
+      for (let i = 0; i < 5 && next; i++) {
+        const last = items[items.length - 1];
+        if (last && last.ageDays != null && last.ageDays > days) break;
+        try {
+          r = await webApi(endpoint, Object.assign({ ctoken: next }, request));
+          collect(r);
+          const after = tokenOf(r);
+          next = after === next ? null : after;
+        } catch (e) { break; }
+      }
+      const summary = `${items.length} bildirim, ${pages} sayfa, türler ${JSON.stringify(kinds)}, alanlar [${fields}]`;
+      return { items: items.filter((x) => x.ageDays == null || x.ageDays <= days), summary };
+    },
+
+    // A video's channel and YouTube category (one request): tells music channels (artists,
+    // labels, festivals) from the rest.
+    async ytVideoInfo({ videoId }) {
+      const r = await webApi('player', { videoId });
+      const d = r.videoDetails || {};
+      const m = r.microformat?.playerMicroformatRenderer || {};
+      return {
+        channelId: d.channelId || m.externalChannelId || null, channel: d.author || m.ownerChannelName || '',
+        category: m.category || null, seconds: +(d.lengthSeconds || 0) || 0,
+      };
+    },
+
+    // Regular YouTube search; `long`: only videos over 20 minutes (sets, live recordings).
+    async ytSearch({ query, long }) {
+      const body = { query };
+      if (long) body.params = 'EgIYAg%3D%3D';
+      const r = await webApi('search', body);
+      return { items: uniqueYt(ytItems(r)), musicOnly: false };
+    },
+
+    // What regular YouTube suggests next to a video (where similar sets cluster).
+    async ytRelated({ videoId }) {
+      const r = await webApi('next', { videoId });
+      return { items: uniqueYt(ytItems(findKey(r, 'secondaryResults') || {})), musicOnly: false };
+    },
+
     async home({ params, browseId }) {
       const id = browseId || 'FEmusic_home';
       const r = await api('browse', params ? { browseId: id, params } : { browseId: id });
@@ -638,6 +942,29 @@
         handle: text(h.channelHandle) || text(h.email) || '',
         photo: bestThumb(h.accountPhoto, 96),
       };
+    },
+
+    // A page as YouTube Music shows it in another country (gl), e.g. the US explore page.
+    async browseIn({ browseId, params, gl }) {
+      const base = window.ytcfg.get('INNERTUBE_CONTEXT') || {};
+      const context = Object.assign({}, base, { client: Object.assign({}, base.client || {}, { gl }) });
+      const body = params ? { context, browseId, params } : { context, browseId };
+      const r = await api('browse', body);
+      return { header: parseHeader(r), chips: chipsOf(r), sections: extractSections(r), continuation: sectionListToken(r) };
+    },
+
+    // The artists this account is subscribed to.
+    async subscriptions() {
+      const r = await api('browse', { browseId: 'FEmusic_library_corpus_artists' });
+      const items = [];
+      for (const s of extractSections(r)) items.push(...s.items);
+      return items.filter((i) => i.browseId);
+    },
+
+    // YouTube Music's charts for the whole world ("ZZ") instead of the account's country.
+    async globalCharts() {
+      const r = await api('browse', { browseId: 'FEmusic_charts', formData: { selectedValues: ['ZZ'] } });
+      return { header: null, chips: [], sections: extractSections(r), continuation: null };
     },
 
     async library() {
@@ -739,27 +1066,31 @@
         if (w[k] != null) body[k] = w[k];
       }
       let r = await api('next', body);
-      let items = panelItems(r.contents);
-      if (w.videoId && items.length <= 1) {
+      let rows = panelRows(r.contents);
+      if (w.videoId && rows.length <= 1) {
         // A single song: continue with YouTube Music's automix (radio), like the web player.
         const wpe = findKey(r, 'automixPlaylistVideoRenderer')?.navigationEndpoint?.watchPlaylistEndpoint;
         const pl = wpe?.playlistId || ('RDAMVM' + w.videoId);
         try {
           const r2 = await api('next', Object.assign({}, body, { playlistId: pl, params: wpe?.params || body.params }));
-          const more = panelItems(r2.contents);
-          if (more.length > items.length) { items = more; r = r2; }
+          const more = panelRows(r2.contents);
+          if (more.length > rows.length) { rows = more; r = r2; }
         } catch (e) { /* keep the single song */ }
       }
-      let current = items.findIndex((p) => p.selected);
-      if (current < 0 && w.videoId) current = items.findIndex((p) => p.videoId === w.videoId);
+      let current = rows.findIndex((x) => x.p.selected);
+      if (current < 0 && w.videoId) current = rows.findIndex((x) => x.p.videoId === w.videoId);
       if (current < 0) current = 0;
-      return { items: items.map(queueEntry), current, continuation: panelToken(r) };
+      const listId = findKey(r, 'playlistPanelRenderer')?.playlistId || body.playlistId || '';
+      return {
+        items: rowsToEntries(rows), current, continuation: panelToken(r),
+        radio: isRadio(listId),
+      };
     },
 
     async queueMore({ token }) {
       const r = await api('next', { isAudioOnly: true, enablePersistentPlaylistPanel: true }, ctokenQuery(token));
       const next = panelToken(r.continuationContents);
-      return { items: panelItems(r.continuationContents).map(queueEntry), current: 0, continuation: next === token ? null : next };
+      return { items: rowsToEntries(panelRows(r.continuationContents)), current: 0, continuation: next === token ? null : next };
     },
 
     // ── playlists ──
@@ -871,18 +1202,34 @@
       return true;
     },
 
-    // Tells YouTube Music the song was played, so history and recommendations keep working.
-    async tracking({ videoId }) {
+    // Listening reports, as the official player sends them, so the account's history and
+    // recommendations know what was really listened to: a "playback" report once a song has
+    // been heard for a while, then "watchtime" reports with the stretches actually heard
+    // (a song skipped after 20 seconds reads as skipped, not as listened).
+    async trackStart({ videoId }) {
       const cfg = window.ytcfg;
-      if (!cfg.get('LOGGED_IN')) return false;
+      if (!cfg.get('LOGGED_IN')) return { session: null };
       const r = await api('player', { videoId, playbackContext: { contentPlaybackContext: { html5Preference: 'HTML5_PREF_WANTS' } } });
-      const base = r.playbackTracking?.videostatsPlaybackUrl?.baseUrl;
-      if (!base) return false;
+      const pt = r.playbackTracking || {};
+      const base = pt.videostatsPlaybackUrl?.baseUrl;
+      if (!base) return { session: null };
       const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
       let cpn = '';
       for (let i = 0; i < 16; i++) cpn += A[Math.floor(Math.random() * 64)];
-      await http(`${base}&ver=2&c=WEB_REMIX&cpn=${cpn}`, 'GET',
-        { 'X-Goog-AuthUser': String(cfg.get('SESSION_INDEX') ?? 0), Origin: location.origin, Referer: location.origin + '/' }, '', location.origin);
+      await statsPing(base, `&cpn=${cpn}`);
+      const watch = pt.videostatsWatchtimeUrl?.baseUrl;
+      if (watch) {
+        listens.set(cpn, watch);
+        while (listens.size > 6) listens.delete(listens.keys().next().value);
+      }
+      return { session: cpn };
+    },
+
+    async trackWatch({ session, st, et }) {
+      const watch = listens.get(session);
+      if (!watch) return false;
+      const f = (x) => Math.max(0, Number(x) || 0).toFixed(3);
+      await statsPing(watch, `&cpn=${session}&cmt=${f(et)}&st=${f(st)}&et=${f(et)}`);
       return true;
     },
 

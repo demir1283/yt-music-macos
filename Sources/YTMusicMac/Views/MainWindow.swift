@@ -174,7 +174,7 @@ struct RootPage: View {
 }
 
 /// The detail column's pages: the section's root page, or the last page opened from it.
-/// Pages are fetched fresh each time they open; nothing is kept once you leave.
+/// Only the page on screen exists; going back shows the one below from memory (PageCache).
 struct PageStack: View {
     let section: SidebarItem
     let path: [BrowseTarget]

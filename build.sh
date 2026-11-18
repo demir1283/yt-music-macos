@@ -9,8 +9,8 @@ APP_NAME="YTMusicMac"            # SwiftPM product / executable name
 DISPLAY_NAME="YT Music"      # name shown in Finder, Dock and the menu bar
 BUNDLE_ID="io.github.demir1283.ytmusic"
 APP="$DISPLAY_NAME.app"
-VERSION="1.0.0"              # shown in "About YT Music"
-BUILD_NUMBER="1"
+VERSION="2.0.0"              # shown in "About YT Music"
+BUILD_NUMBER="2"
 
 if ! command -v swift >/dev/null 2>&1; then
   echo "Swift bulunamadı. Önce şunu çalıştır:  xcode-select --install" >&2

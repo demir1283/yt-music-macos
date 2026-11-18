@@ -52,7 +52,14 @@ struct SearchView: View {
     }
 
     private var query: String { app.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var searchKey: String { query + "|" + (chip?.params ?? "") }
+    private var searchKey: String { query + "|" + (chip?.params ?? "") + "|\(app.refreshToken)" }
+
+    /// A whole overview (the combined results and the per-type shelves), kept in memory
+    /// for the last few searches (PageCache).
+    private struct Snapshot {
+        let results: BrowsePage
+        let expanded: [ExpandedShelf]
+    }
 
     var body: some View {
         ScrollView {
@@ -205,6 +212,19 @@ struct SearchView: View {
             lastQuery = q
             if chip != nil { chip = nil; return }   // the key change re-runs the task
         }
+        // A search made a moment ago shows at once; past its lifetime it is run again
+        // behind the results, which then change in place.
+        let cacheKey = PageCache.search(q)
+        var refreshing = false
+        if chip == nil, let kept = PageCache.shared.value(cacheKey, as: Snapshot.self) {
+            results = kept.results
+            expanded = kept.expanded
+            chipItems = []
+            chipToken = nil
+            error = nil
+            if PageCache.shared.isFresh(cacheKey) { return }
+            refreshing = true
+        }
         do { try await Task.sleep(nanoseconds: 280_000_000) } catch { return }   // debounce typing
         error = nil
         let engine = app.engine
@@ -218,8 +238,14 @@ struct SearchView: View {
                 if results == nil { results = r }
                 return
             }
-            results = r
-            expanded = []
+            if refreshing {
+                if let old = results, !old.sameContent(as: r) {
+                    withAnimation(.easeInOut(duration: 0.35)) { results = r }
+                }
+            } else {
+                results = r
+                expanded = []
+            }
             chipItems = []
             chipToken = nil
 
@@ -236,11 +262,19 @@ struct SearchView: View {
                    let shelf = page.sections.first(where: { $0.layout != "top" && !$0.items.isEmpty }) {
                     collected.append(ExpandedShelf(kind: kind, title: c.title, section: shelf))
                     // Show results progressively (songs first).
-                    if kind == .songs { expanded = collected }
+                    if kind == .songs && !refreshing { expanded = collected }
                 }
             }
             guard !Task.isCancelled, q == query else { return }
-            expanded = collected.sorted { $0.kind.order < $1.kind.order }
+            let all = collected.sorted { $0.kind.order < $1.kind.order }
+            if refreshing {
+                if all.map(\.section.contentKey) != expanded.map(\.section.contentKey) {
+                    withAnimation(.easeInOut(duration: 0.35)) { expanded = all }
+                }
+            } else {
+                expanded = all
+            }
+            PageCache.shared.store(Snapshot(results: r, expanded: all), for: cacheKey, lifetime: PageCache.Lifetime.search)
         } catch is CancellationError {
         } catch {
             if !Task.isCancelled { self.error = error.localizedDescription }

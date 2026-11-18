@@ -148,7 +148,7 @@ extension SigSolver {
 /// only while troubleshooting is switched on:
 ///   defaults write io.github.demir1283.ytmusic diagnosticLog -bool true   (off: delete instead of write)
 enum EngineLog {
-    private static let enabled = UserDefaults.standard.bool(forKey: "diagnosticLog")
+    static let enabled = UserDefaults.standard.bool(forKey: "diagnosticLog")
     private static let url: URL = Bundle.main.bundleURL.deletingLastPathComponent()
         .appendingPathComponent("YT Music.log")
     private static let queue = DispatchQueue(label: "ytmusic.log")

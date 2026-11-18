@@ -4,10 +4,29 @@ import SwiftUI
 struct ShelfView: View {
     let section: Shelf
     var trackLimit = 6
+    @Environment(AppModel.self) private var app
+
+    /// Without what the user said not to recommend (it leaves at once, the rest closes up).
+    private var visible: Shelf {
+        let hidden = app.hiddenKeys
+        guard !hidden.isEmpty, section.items.contains(where: { hidden.contains($0.recommendationKey) }) else { return section }
+        var s = section
+        s.items.removeAll { hidden.contains($0.recommendationKey) }
+        return s
+    }
 
     var body: some View {
+        let section = visible
         Group {
             switch section.layout {
+            case "shortcuts":
+                ShortcutGrid(section: section)
+            case "picks":
+                PicksRow(section: section)
+            case "similar":
+                SimilarRow(section: section)
+            case "spotlight":
+                SpotlightGrid(section: section)
             case "nav":
                 CategoryGrid(section: section)
             case "top":
@@ -28,15 +47,40 @@ struct ShelfView: View {
     }
 }
 
+/// The artist whose popular songs a shelf lists: the list its "see all" opens gets a made
+/// cover with the artist's name.
+private struct PageArtistKey: EnvironmentKey {
+    static let defaultValue: String? = nil
+}
+
+extension EnvironmentValues {
+    var pageArtist: String? {
+        get { self[PageArtistKey.self] }
+        set { self[PageArtistKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// A page row that fades over when its content (`key`) changes inside an animation,
+    /// while keeping `id` as its identity in the lazy stack.
+    func fadeSwap(_ key: String, id: String) -> some View {
+        ZStack(alignment: .topLeading) {
+            self.id(key).transition(.opacity)
+        }
+        .id(id)
+    }
+}
+
 private struct ShelfHeader: View {
     let section: Shelf
     @Environment(AppModel.self) private var app
     @Environment(\.density) private var d
+    @Environment(\.pageArtist) private var pageArtist
 
     var body: some View {
         if !section.title.isEmpty {
             SectionTitle(title: section.title, subtitle: section.strapline,
-                         action: section.more.map { more in { app.openMore(more, title: section.title) } })
+                         action: section.more.map { more in { app.openMore(more, title: section.title, artist: pageArtist) } })
                 .padding(.horizontal, d.pad)
         }
     }
@@ -48,6 +92,8 @@ struct CardCarousel: View {
     let section: Shelf
     @ViewState var hover = false
     @ViewState var position: String? = nil
+    /// Width the row has on screen: the arrows show only when the cards don't all fit.
+    @ViewState var viewport: CGFloat = 0
     @Environment(\.density) private var d
 
     private var index: Int {
@@ -60,6 +106,9 @@ struct CardCarousel: View {
         // card's title sits on the same line and nothing gets clipped.
         let mixed = section.items.contains { $0.wide }
         let imageH: CGFloat = mixed ? d.cardMixed : d.card
+        let content = section.items.reduce(CGFloat(0)) { $0 + ($1.wide ? imageH * 16 / 9 : imageH) }
+            + d.cardGap * CGFloat(max(section.items.count - 1, 0)) + d.pad * 2
+        let overflows = content > viewport + 1
         VStack(alignment: .leading, spacing: d.v(8, 10)) {
             ShelfHeader(section: section)
             ScrollView(.horizontal, showsIndicators: false) {
@@ -67,6 +116,7 @@ struct CardCarousel: View {
                     ForEach(section.items) { item in
                         ItemCard(item: item, width: item.wide ? imageH * 16 / 9 : imageH, imageHeight: imageH)
                             .id(item.id)
+                            .transition(.scale(scale: 0.85).combined(with: .opacity))
                     }
                 }
                 .scrollTargetLayout()
@@ -74,20 +124,25 @@ struct CardCarousel: View {
             .contentMargins(.horizontal, d.pad, for: .scrollContent)
             .scrollPosition(id: $position, anchor: .leading)
             .frame(height: imageH + d.v(44, 50))
+            .background(GeometryReader { g in
+                Color.clear
+                    .onAppear { viewport = g.size.width }
+                    .onChange(of: g.size.width) { _, w in viewport = w }
+            })
             .overlay(alignment: .leading) {
-                if hover && index > 0 {
+                if hover && overflows && index > 0 {
                     CarouselArrow(system: "chevron.left") { move(-3) }
                         .padding(.leading, 10)
                 }
             }
             .overlay(alignment: .trailing) {
-                if hover && index < section.items.count - 3 {
+                if hover && overflows && index < section.items.count - 3 {
                     CarouselArrow(system: "chevron.right") { move(3) }
                         .padding(.trailing, 10)
                 }
             }
         }
-        .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hover = h } }
+        .scrollAwareHover($hover, animation: .easeOut(duration: 0.15))
     }
 
     private func move(_ delta: Int) {
@@ -142,6 +197,9 @@ struct ItemCard: View {
                         placeholder: item.isArtist ? "person.fill" : "music.note")
                     .frame(width: width, height: imageHeight ?? (item.wide ? width * 9 / 16 : width))
                     .shadow(color: .black.opacity(hover ? 0.25 : 0.12), radius: hover ? 10 : 4, y: 3)
+                if item.kind == "mix" {
+                    MixBand(title: item.title, width: width)
+                }
 
                 if hover && !item.isArtist {
                     LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .center, endPoint: .bottom)
@@ -158,34 +216,39 @@ struct ItemCard: View {
             }
             .frame(width: width, height: imageHeight ?? (item.wide ? width * 9 / 16 : width))
 
-            VStack(alignment: item.isArtist ? .center : .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text(item.title)
-                        .font(.system(size: d.v(12.5, 13), weight: .medium))
-                        .foregroundStyle(isCurrent ? Color.brand : Color.primary)
-                        .lineLimit(1)
-                    if item.explicit { ExplicitBadge() }
+            HStack(alignment: .top, spacing: 8) {
+                // Notifications: the channel's picture beside the title.
+                if let avatar = item.avatar {
+                    Artwork(url: avatar, circle: true, placeholder: "person.fill")
+                        .frame(width: d.v(26, 30), height: d.v(26, 30))
                 }
-                if !item.isArtist {
-                    Text(item.subtitle)
-                        .font(.system(size: d.v(11, 12)))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                VStack(alignment: item.isArtist ? .center : .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        // Not read yet on YouTube.
+                        if item.unread == true {
+                            Circle().fill(Color.brand).frame(width: 7, height: 7)
+                        }
+                        Text(item.title)
+                            .font(.system(size: d.v(12.5, 13), weight: .medium))
+                            .foregroundStyle(isCurrent ? Color.brand : Color.primary)
+                            .lineLimit(1)
+                        if item.explicit { ExplicitBadge() }
+                    }
+                    if !item.isArtist {
+                        Text(item.subtitle)
+                            .font(.system(size: d.v(11, 12)))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: item.isArtist ? .center : .leading)
             }
             .frame(width: width, alignment: item.isArtist ? .center : .leading)
         }
         .contentShape(Rectangle())
-        // Continuous hover: plain onHover can miss cards that scrolled under the pointer
-        // (carousel arrows), so their play button never showed.
-        .onContinuousHover { phase in
-            let inside: Bool
-            switch phase {
-            case .active: inside = true
-            case .ended: inside = false
-            }
-            if inside != hover { withAnimation(.easeOut(duration: 0.15)) { hover = inside } }
-        }
+        // Continuous hover (plain onHover can miss cards that scrolled under the pointer with
+        // the carousel arrows), ignored while the page scrolls under a still pointer.
+        .scrollAwareHover($hover, animation: .easeOut(duration: 0.15))
         .onTapGesture { app.open(item) }
         .contextMenu { ItemMenu(item: item) }
     }
@@ -197,6 +260,8 @@ struct SongGrid: View {
     let section: Shelf
     @ViewState var hover = false
     @ViewState var position: Int? = nil
+    /// Width the grid has on screen: the arrows show only when the columns don't all fit.
+    @ViewState var viewport: CGFloat = 0
     @Environment(\.density) private var d
 
     private var rows: Int { max(1, min(4, section.items.count)) }
@@ -211,6 +276,8 @@ struct SongGrid: View {
         let cols = columns
         let index = position ?? 0
         let rowH = d.songRow
+        let content = CGFloat(cols.count) * d.songColumn + d.v(18, 24) * CGFloat(max(cols.count - 1, 0)) + d.pad * 2
+        let overflows = content > viewport + 1
         VStack(alignment: .leading, spacing: d.v(8, 10)) {
             ShelfHeader(section: section)
             ScrollView(.horizontal, showsIndicators: false) {
@@ -232,22 +299,27 @@ struct SongGrid: View {
             .contentMargins(.horizontal, d.pad, for: .scrollContent)
             .scrollPosition(id: $position, anchor: .leading)
             .frame(height: CGFloat(rows) * rowH)
+            .background(GeometryReader { g in
+                Color.clear
+                    .onAppear { viewport = g.size.width }
+                    .onChange(of: g.size.width) { _, w in viewport = w }
+            })
             .overlay(alignment: .leading) {
-                if hover && index > 0 {
+                if hover && overflows && index > 0 {
                     CarouselArrow(system: "chevron.left") { move(-2, cols.count) }
                         .padding(.leading, 10)
                         .offset(y: 22)
                 }
             }
             .overlay(alignment: .trailing) {
-                if hover && index < cols.count - 2 {
+                if hover && overflows && index < cols.count - 2 {
                     CarouselArrow(system: "chevron.right") { move(2, cols.count) }
                         .padding(.trailing, 10)
                         .offset(y: 22)
                 }
             }
         }
-        .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hover = h } }
+        .scrollAwareHover($hover, animation: .easeOut(duration: 0.15))
     }
 
     private func move(_ delta: Int, _ count: Int) {
@@ -300,7 +372,7 @@ struct CompactSongRow: View {
             Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 0.5).padding(.leading, d.songArt + 10)
         }
         .contentShape(Rectangle())
-        .onHover { hover = $0 }
+        .scrollAwareHover($hover)
         .onTapGesture(count: 2) { app.play(item) }
         .contextMenu { ItemMenu(item: item) }
     }
@@ -521,7 +593,7 @@ struct TrackRow: View {
                 .fill(hover ? Color.primary.opacity(0.09) : (striped ? Color.primary.opacity(0.035) : .clear))
         )
         .contentShape(Rectangle())
-        .onHover { hover = $0 }
+        .scrollAwareHover($hover)
         .onTapGesture(count: 2) { primaryAction() }
         .contextMenu { ItemMenu(item: item) }
     }
@@ -600,7 +672,7 @@ struct CategoryTile: View {
         .scaleEffect(hover ? 1.02 : 1)
         .shadow(color: .black.opacity(hover ? 0.2 : 0.08), radius: hover ? 8 : 3, y: 2)
         .contentShape(Rectangle())
-        .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hover = h } }
+        .scrollAwareHover($hover, animation: .easeOut(duration: 0.15))
         .onTapGesture { app.open(item) }
     }
 }
@@ -608,12 +680,19 @@ struct CategoryTile: View {
 /// Wrapping grid of cards (library, filtered search, "see all" pages).
 struct CardGrid: View {
     let items: [MediaItem]
+    @Environment(AppModel.self) private var app
     @Environment(\.density) private var d
 
     var body: some View {
+        // What the user said not to recommend leaves at once; the cards after it move up.
+        let hidden = app.hiddenKeys
+        let shown = hidden.isEmpty ? items : items.filter { !hidden.contains($0.recommendationKey) }
         LazyVGrid(columns: [GridItem(.adaptive(minimum: d.gridCard, maximum: d.gridCard + 40), spacing: d.cardGap, alignment: .top)],
                   alignment: .leading, spacing: d.v(16, 24)) {
-            ForEach(items) { ItemCard(item: $0, width: d.gridCard) }
+            ForEach(shown) {
+                ItemCard(item: $0, width: d.gridCard)
+                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+            }
         }
         .padding(.horizontal, d.pad)
     }

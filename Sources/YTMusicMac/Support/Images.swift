@@ -2,12 +2,38 @@ import SwiftUI
 import AppKit
 import ImageIO
 
-/// Downloads images. Nothing is cached, in memory or on disk: each image lives only
-/// while the view showing it is on screen.
+/// Downloads images and keeps them in memory while the app runs (64 MB in all), so a cover
+/// scrolled past or seen on another page shows again without being downloaded again.
+/// Nothing goes to disk; the memory is let go under memory pressure and when the app quits.
+///
+/// Two layers: the downloaded files as they came (small: a cover is tens of KB, so a few
+/// hundred fit in 24 MB) and the decoded, shrunk pictures (large: a card is half a MB, so
+/// 40 MB holds only the most recent ones). A cover dropped from the second is decoded again
+/// from the first in a few milliseconds, off the main thread, instead of downloaded.
 final class ImageLoader: @unchecked Sendable {
     static let shared = ImageLoader()
 
     private let session: URLSession
+
+    /// One picture per address: the largest size asked for so far.
+    private final class Cached {
+        let image: NSImage
+        /// The size it was decoded for (an original smaller than that comes out smaller).
+        let asked: Int
+        init(_ image: NSImage, asked: Int) { self.image = image; self.asked = asked }
+    }
+
+    private let pictures: NSCache<NSString, Cached> = {
+        let c = NSCache<NSString, Cached>()
+        c.totalCostLimit = 40 * 1024 * 1024
+        return c
+    }()
+
+    private let files: NSCache<NSString, NSData> = {
+        let c = NSCache<NSString, NSData>()
+        c.totalCostLimit = 24 * 1024 * 1024
+        return c
+    }()
 
     private init() {
         let config = URLSessionConfiguration.ephemeral
@@ -17,14 +43,39 @@ final class ImageLoader: @unchecked Sendable {
         session = URLSession(configuration: config)
     }
 
+    /// The decoded picture already in memory, if it is sharp enough for `maxPixel`.
+    func cached(_ url: String, maxPixel: Int = 0) -> NSImage? {
+        guard let c = pictures.object(forKey: url as NSString) else { return nil }
+        return c.asked * 5 >= maxPixel * 4 ? c.image : nil
+    }
+
+    /// In memory in either form: it shows without a download (and without a fade).
+    func isKept(_ url: String) -> Bool {
+        pictures.object(forKey: url as NSString) != nil || files.object(forKey: url as NSString) != nil
+    }
+
+    private func remember(_ image: NSImage, url: String, asked: Int) {
+        if let old = pictures.object(forKey: url as NSString), old.asked >= asked { return }
+        let px = image.representations.first.map { $0.pixelsWide * $0.pixelsHigh } ?? Int(image.size.width * image.size.height)
+        pictures.setObject(Cached(image, asked: asked), forKey: url as NSString, cost: max(1, px) * 4)
+    }
+
     /// `maxPixel`: the longest side the image is shown at, in pixels. The picture is
     /// decoded straight to that size (Apple's image guidance), so a 1200-pixel cover
     /// shown as a small thumbnail doesn't keep megabytes of pixels in memory.
     func load(_ url: String, maxPixel: Int = 720) async -> NSImage? {
-        if let img = await fetch(url, maxPixel) { return img }
+        if let img = cached(url, maxPixel: maxPixel) { return img }
+        if let kept = files.object(forKey: url as NSString), let img = Self.decode(kept as Data, maxPixel: maxPixel) {
+            remember(img, url: url, asked: maxPixel)
+            return img
+        }
+        var data = await download(url)
         // Some resized thumbnail variants don't exist: fall back to the original size.
-        if let base = Self.unsized(url), base != url { return await fetch(base, maxPixel) }
-        return nil
+        if data == nil, let base = Self.unsized(url), base != url { data = await download(base) }
+        guard let data, let img = Self.decode(data, maxPixel: maxPixel) else { return nil }
+        files.setObject(data as NSData, forKey: url as NSString, cost: data.count)
+        remember(img, url: url, asked: maxPixel)
+        return img
     }
 
     /// Decodes (and shrinks) in the background, so the main thread never decodes images.
@@ -41,7 +92,7 @@ final class ImageLoader: @unchecked Sendable {
         return NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
     }
 
-    private func fetch(_ url: String, _ maxPixel: Int) async -> NSImage? {
+    private func download(_ url: String) async -> Data? {
         guard let u = URL(string: url) else { return nil }
         for attempt in 0..<3 {
             if Task.isCancelled { return nil }
@@ -50,7 +101,7 @@ final class ImageLoader: @unchecked Sendable {
             if let result = try? await session.data(for: req),
                case let (data, resp) = result,
                let http = resp as? HTTPURLResponse {
-                if (200..<300).contains(http.statusCode), let image = Self.decode(data, maxPixel: maxPixel) { return image }
+                if (200..<300).contains(http.statusCode), !data.isEmpty { return data }
                 if (400..<500).contains(http.statusCode) { return nil }
             }
             try? await Task.sleep(nanoseconds: UInt64(400_000_000 * (attempt + 1)))
@@ -75,6 +126,8 @@ struct RemoteImage: View {
     @ViewState var image: NSImage? = nil
     @ViewState var loadedURL: String? = nil
     @ViewState var side: CGFloat = 0
+    /// Fade in only what had to be downloaded; a picture from memory just appears.
+    @ViewState var fade = true
 
     /// Pixels needed for the size this view is shown at (Retina), within sane bounds.
     private func pixelBudget() async -> Int {
@@ -95,7 +148,8 @@ struct RemoteImage: View {
                     }
             })
             .overlay {
-                let shown = loadedURL == url ? image : nil
+                // A picture already in memory shows straight away (no placeholder, no fade).
+                let shown = loadedURL == url ? image : url.flatMap { ImageLoader.shared.cached($0, maxPixel: side > 0 ? Int(side * 2) : 96) }
                 ZStack {
                     if let img = shown {
                         Image(nsImage: img)
@@ -112,12 +166,13 @@ struct RemoteImage: View {
                     }
                 }
                 // Images fade in when they arrive and cross-fade when the URL changes.
-                .animation(.easeInOut(duration: 0.35), value: shown == nil ? "" : (url ?? ""))
+                .animation(fade ? .easeInOut(duration: 0.35) : nil, value: shown == nil ? "" : (url ?? ""))
             }
             .clipped()
             .task(id: url) {
                 guard let url else { image = nil; loadedURL = nil; return }
                 if loadedURL == url, image != nil { return }
+                fade = !ImageLoader.shared.isKept(url)
                 let budget = await pixelBudget()
                 guard !Task.isCancelled else { return }
                 var img = await ImageLoader.shared.load(url, maxPixel: budget)
@@ -129,7 +184,7 @@ struct RemoteImage: View {
                 image = img
                 loadedURL = url
             }
-            // Off screen: let the picture go right away.
+            // Off screen: the view lets go of it (the loader's memory keeps it for a while).
             .onDisappear { image = nil; loadedURL = nil }
     }
 }

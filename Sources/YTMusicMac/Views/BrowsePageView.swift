@@ -10,7 +10,7 @@ struct BrowsePageView: View {
     @ViewState var error: String? = nil
 
     private var title: String {
-        if let t = page?.header?.title, !t.isEmpty { return t }
+        if let t = shown?.header?.title, !t.isEmpty { return t }
         return target.title ?? ""
     }
 
@@ -28,24 +28,39 @@ struct BrowsePageView: View {
         }
     }
 
+    /// The page loaded here, or the one kept in memory from before (shown at once).
+    private var shown: BrowsePage? {
+        if let page { return page }
+        return app.engine.sessionID > 0 ? app.keptPage(for: target) : nil
+    }
+
+    /// Checks again on ⌘R and when the app comes back to the screen.
+    private var taskKey: String {
+        "\(app.engine.sessionID)|\(app.refreshToken)|\(AppActivity.shared.isVisible)"
+    }
+
     var body: some View {
+        let current = shown
         ScrollView {
             // Lazy: shelves far below the window are built (and their covers loaded) only
             // when scrolled to, instead of all at once.
             LazyVStack(alignment: .leading, spacing: d.sectionGap) {
-                if let page {
+                if let page = current {
                     let single = page.sections.count == 1
                     ForEach(page.sections) { s in
-                        if s.layout == "cards" && single {
-                            VStack(alignment: .leading, spacing: d.v(10, 12)) {
-                                if !s.title.isEmpty { SectionTitle(title: s.title).padding(.horizontal, d.pad) }
-                                CardGrid(items: s.items)
+                        VStack(alignment: .leading, spacing: 0) {
+                            if s.layout == "cards" && single {
+                                VStack(alignment: .leading, spacing: d.v(10, 12)) {
+                                    if !s.title.isEmpty { SectionTitle(title: s.title).padding(.horizontal, d.pad) }
+                                    CardGrid(items: s.items)
+                                }
+                            } else if s.layout == "list" && s.hasTracks {
+                                TrackListSection(section: s, limit: single ? 300 : 10, numbered: target.browseId == "FEmusic_charts")
+                            } else {
+                                ShelfView(section: s)
                             }
-                        } else if s.layout == "list" && s.hasTracks {
-                            TrackListSection(section: s, limit: single ? 300 : 10, numbered: target.browseId == "FEmusic_charts")
-                        } else {
-                            ShelfView(section: s)
                         }
+                        .fadeSwap(s.contentKey, id: s.id)
                     }
                     if page.sections.isEmpty {
                         EmptyStateView(systemImage: "music.note", title: "Burada gösterilecek bir şey yok")
@@ -60,17 +75,30 @@ struct BrowsePageView: View {
         }
         .navigationTitle(title)
         .pageChrome()
-        .task(id: app.engine.sessionID) { await load() }
+        .task(id: taskKey) { await load() }
     }
 
     private func load(force: Bool = false) async {
+        // Loads once the account is ready (see YTMusic.sessionID), not twice.
+        guard app.engine.sessionID > 0 else { return }
         error = nil
+        if page == nil, let kept = app.keptPage(for: target) { page = kept }
+        // Kept and still current: nothing to fetch.
+        if !force, page != nil, PageCache.shared.isFresh(PageCache.page(target)) { return }
         do {
-            let loaded = try await app.page(for: target, force: force)
-            page = loaded
+            let loaded = try await app.page(for: target, force: true)
+            guard !Task.isCancelled else { return }
+            if let old = page {
+                // Refreshed behind the page: only rows that changed fade over.
+                if !old.sameContent(as: loaded) {
+                    withAnimation(.easeInOut(duration: 0.35)) { page = loaded }
+                }
+            } else {
+                page = loaded
+            }
         } catch is CancellationError {
         } catch {
-            self.error = error.localizedDescription
+            if page == nil { self.error = error.localizedDescription }
         }
     }
 }

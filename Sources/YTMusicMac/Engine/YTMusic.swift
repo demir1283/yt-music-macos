@@ -61,6 +61,9 @@ final class YTMusic {
     private(set) var booted = false
     private(set) var loggedIn = false
     private(set) var avatarURL: String?
+    /// Bumped once the account, its library and its name are in place (at launch and after
+    /// signing in or out). Pages that depend on the account load when it changes, and not
+    /// before: 0 means not ready yet.
     private(set) var sessionID = 0
     private(set) var loadError: String?
     private(set) var account: AccountInfo?
@@ -191,18 +194,28 @@ final class YTMusic {
         loggedIn = info.loggedIn
         isReady = true
         booted = true
-        sessionID += 1
         if loggedIn {
-            loadIndexFromDisk()
+            // Library and account name together (the home page uses both).
+            async let accountInfo = try? call("account", as: AccountInfo?.self)
             await loadLibrary()
-            Task { await rebuildPlaylistIndex() }
-            account = try? await call("account", as: AccountInfo?.self)
+            account = (await accountInfo) ?? nil
             avatarURL = account?.photo
+            // Which playlist holds which song: reads every playlist, so it waits until the
+            // home page and the first song have had the connection to themselves.
+            Task {
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                await rebuildPlaylistIndex()
+            }
         } else {
             library = .empty
             account = nil
             avatarURL = nil
         }
+        // Only now do the account's pages load: once, with everything they need. Pages
+        // kept from the previous account (or from before signing in) go.
+        PageCache.shared.clear()
+        musicChannels = [:]
+        sessionID += 1
         await restoreLastSession()
     }
 
@@ -228,6 +241,12 @@ final class YTMusic {
 
     /// Called when the app quits.
     func saveSessionNow() { saveSession() }
+
+    /// The app is quitting: note the play in progress, save where it was.
+    func prepareToQuit() {
+        endListen(.stop)
+        saveSession()
+    }
 
     /// Puts the last played song in the player bar and side panel, paused. The account's
     /// YouTube Music history decides which song (so a song played on another device
@@ -258,7 +277,7 @@ final class YTMusic {
                 }
             }
             if let vid = e.videoId, let q = rebuilt, !q.items.isEmpty, track == nil {
-                let (list, current) = filtered(q.items, keep: q.items.firstIndex { $0.videoId == vid })
+                let (list, current) = arranged(q, keep: q.items.firstIndex { $0.videoId == vid })
                 items = list
                 queueContinuation = q.continuation
                 queueIndex = list.firstIndex { $0.videoId == vid } ?? min(max(0, current), list.count - 1)
@@ -267,6 +286,7 @@ final class YTMusic {
                 items = [e]
                 queueIndex = 0
                 queueContinuation = nil
+                queueIsRadio = false
             }
             showRestored(position: s.position)
             EngineLog.write("Son oturum geri yüklendi: \(s.items[s.index].title)")
@@ -274,9 +294,10 @@ final class YTMusic {
             let ep = latest.play ?? Self.watchJSON(vid)
             guard let q = try? await call("watchQueue", ["endpoint": ep, "context": ""], as: WatchQueue.self),
                   !q.items.isEmpty, track == nil else { return }
-            items = q.items
+            let (list, current) = arranged(q, keep: min(max(0, q.current), q.items.count - 1))
+            items = list
             queueContinuation = q.continuation
-            queueIndex = min(max(0, q.current), q.items.count - 1)
+            queueIndex = min(max(0, current), list.count - 1)
             showRestored(position: 0)
             EngineLog.write("Geçmişten son şarkı: \(latest.title)")
         }
@@ -319,7 +340,8 @@ final class YTMusic {
             let fresh = q.items.filter { e in e.videoId.map { !known.contains($0) } ?? false }
             let upcoming = filtered(fresh, keep: nil).0
             guard !upcoming.isEmpty else { return }
-            items.append(contentsOf: upcoming)
+            queueIsRadio = true
+            appendUpcoming(upcoming)
             queueContinuation = q.continuation
             publishQueue()
             EngineLog.write("Sıra tamamlandı: \(upcoming.count) şarkı eklendi (\(vid))")
@@ -383,7 +405,7 @@ final class YTMusic {
                 let q: WatchQueue = try await call("watchQueue", ["endpoint": endpoint, "context": context ?? ""])
                 guard token == playToken else { return }
                 guard !q.items.isEmpty else { throw StreamError.noFormat }
-                let (list, current) = filtered(q.items, keep: min(max(0, q.current), q.items.count - 1))
+                let (list, current) = arranged(q, keep: min(max(0, q.current), q.items.count - 1))
                 items = list
                 queueContinuation = q.continuation
                 retriedVideo = nil
@@ -453,6 +475,7 @@ final class YTMusic {
 
     private func startTrack(_ index: Int, startAt: Double = 0) {
         guard items.indices.contains(index) else { return }
+        endListen(.skip)
         playToken += 1
         let token = playToken
         queueIndex = index
@@ -489,6 +512,7 @@ final class YTMusic {
                 player.load(url: s.url, headers: s.headers, duration: s.duration, autoplay: true, startAt: startAt)
                 pushNowPlaying()
                 saveSession()
+                beginListen(e, startAt: startAt)
                 afterStart(vid)
             } catch {
                 guard token == playToken else { return }
@@ -541,14 +565,7 @@ final class YTMusic {
                 EngineLog.write("Sıradaki hazır: \(next) (ilk \(Int(AudioPlayer.standbySeconds)) sn)")
             }
         }
-        // Count the play in the account's history once it has really been listened to.
-        if loggedIn {
-            Task {
-                try? await Task.sleep(nanoseconds: 10_000_000_000)
-                guard track?.videoId == videoId else { return }
-                _ = try? await call("tracking", ["videoId": videoId], as: Ignored.self)
-            }
-        }
+        // The play is reported to the account's history from noteListen, once heard.
     }
 
     private func loadMoreQueue() async {
@@ -561,7 +578,7 @@ final class YTMusic {
         }
         // The queue may have been replaced while this was loading.
         guard queueContinuation == token else { return }
-        items.append(contentsOf: filtered(more.items, keep: nil).0)
+        appendUpcoming(more.items)
         queueContinuation = more.items.isEmpty ? nil : more.continuation
         publishQueue()
     }
@@ -584,6 +601,7 @@ final class YTMusic {
 
     private func audioTime(_ t: Double) {
         guard !resolving else { return }
+        noteListen(t)
         let now = Date()
         if now > seekGuard, abs(position(at: now) - t) > 0.3 {
             position = t
@@ -613,12 +631,14 @@ final class YTMusic {
     }
 
     private func audioEnded() {
+        endListen(.done)
         if repeatMode == "ONE", let audio {
             audio.seek(to: 0)
             audio.play()
             position = 0
             positionDate = Date()
             pushNowPlaying()
+            if items.indices.contains(queueIndex) { beginListen(items[queueIndex], startAt: 0) }
             return
         }
         advance()
@@ -685,7 +705,13 @@ final class YTMusic {
         playGuard = Date().addingTimeInterval(0.5)
         if isPlaying { audio.play() } else { audio.pause() }
         pushNowPlaying()
-        if !isPlaying { saveSession() }
+        if !isPlaying {
+            if var l = listen {
+                flushListen(&l, to: l.lastPos)
+                listen = l
+            }
+            saveSession()
+        }
     }
 
     func next() {
@@ -766,6 +792,8 @@ final class YTMusic {
     }
 
     private func rememberRating(_ videoId: String, _ status: String) {
+        PageCache.shared.markStale { $0.hasPrefix("page|VLLM|") }
+        ListeningLog.shared.record(ListeningLog.Rating(t: Int(Date().timeIntervalSince1970), v: videoId, s: status))
         if status == "DISLIKE" {
             disliked.insert(videoId)
             // Take it out of what's coming up.
@@ -788,6 +816,122 @@ final class YTMusic {
         UserDefaults.standard.set(Array(disliked.suffix(2000)), forKey: "dislikedVideos")
     }
 
+    // MARK: - Radio cleanup
+
+    @ObservationIgnored private var queueIsRadio = false
+
+    /// Radios are arranged (official versions first…) unless switched off in Ayarlar.
+    private var curating: Bool {
+        queueIsRadio && (UserDefaults.standard.object(forKey: "curateRadio") as? Bool ?? true)
+    }
+
+    /// A freshly built queue: disliked songs out and, in a radio, the cleanup over what
+    /// comes after the song asked for.
+    private func arranged(_ q: WatchQueue, keep keepIndex: Int?) -> ([QueueEntry], Int) {
+        queueIsRadio = q.radio ?? false
+        let (list, index) = filtered(q.items, keep: keepIndex)
+        guard curating, list.indices.contains(index) else { return (list, index) }
+        let head = Array(list[...index])
+        return (head + QueueCurator.arrange(pending: Array(list[(index + 1)...]), fixed: head), index)
+    }
+
+    /// Adds rows to the end of the queue. In a radio the cleanup runs over everything still
+    /// to come, so uploads stay behind the official songs that arrive later.
+    private func appendUpcoming(_ rows: [QueueEntry]) {
+        let fresh = filtered(rows, keep: nil).0
+        guard curating, items.indices.contains(queueIndex) else {
+            items.append(contentsOf: fresh)
+            return
+        }
+        let head = Array(items[...queueIndex])
+        let pending = Array(items[(queueIndex + 1)...]) + fresh
+        items = head + QueueCurator.arrange(pending: pending, fixed: head)
+    }
+
+    // MARK: - Listening
+
+    /// The play in progress: how much of it was really heard, for the account's history on
+    /// YouTube and the app's own listening history.
+    private struct Listen {
+        let videoId: String
+        let entry: QueueEntry
+        let radio: Bool
+        var heard: Double = 0
+        var lastPos: Double
+        var segmentStart: Double
+        var session: String? = nil
+        var requested = false
+        var lastFlush = Date()
+    }
+
+    private enum ListenEnd: String { case done, skip, stop }
+
+    @ObservationIgnored private var listen: Listen?
+
+    private func beginListen(_ e: QueueEntry, startAt: Double) {
+        guard let vid = e.videoId else { listen = nil; return }
+        listen = Listen(videoId: vid, entry: e, radio: queueIsRadio, lastPos: startAt, segmentStart: startAt)
+    }
+
+    /// Called with each position update: counts what was heard, notices seeks, and reports
+    /// to YouTube (the play after 10 seconds heard, then the stretches heard each minute).
+    private func noteListen(_ t: Double) {
+        guard var l = listen, track?.videoId == l.videoId else { return }
+        let step = t - l.lastPos
+        if step > 0 && step < 1.6 {
+            l.heard += step
+        } else if abs(step) >= 1.6 {
+            flushListen(&l, to: l.lastPos)   // a seek: report what was heard before it
+            l.segmentStart = t
+        }
+        l.lastPos = t
+        if !l.requested, l.heard >= 10, loggedIn {
+            l.requested = true
+            let vid = l.videoId
+            Task {
+                let ticket = try? await call("trackStart", ["videoId": vid], as: ListenTicket.self)
+                if listen?.videoId == vid { listen?.session = ticket?.session }
+            }
+        }
+        if l.session != nil, Date().timeIntervalSince(l.lastFlush) >= 60 { flushListen(&l, to: t) }
+        listen = l
+    }
+
+    /// Reports the stretch heard since the last report (once YouTube's report is open).
+    private func flushListen(_ l: inout Listen, to end: Double) {
+        guard let session = l.session else { return }
+        let st = l.segmentStart
+        let et = max(st, end)
+        l.segmentStart = et
+        l.lastFlush = Date()
+        guard et - st >= 1 else { return }
+        Task { _ = try? await call("trackWatch", ["session": session, "st": st, "et": et], as: Ignored.self) }
+    }
+
+    /// The play is over: last report to YouTube, one line in the listening history.
+    private func endListen(_ how: ListenEnd) {
+        guard var l = listen else { return }
+        listen = nil
+        let info = track?.videoId == l.videoId ? track : nil
+        let length = info?.duration ?? l.entry.seconds
+        let finished = how == .done || (length > 0 && l.lastPos >= length - 5)
+        flushListen(&l, to: finished && length > 0 ? length : l.lastPos)
+        // A song skipped before a second of it played wasn't a judgement on it.
+        guard l.heard >= 1 else { return }
+        let artists = l.entry.artists ?? []
+        let names = artists.isEmpty ? [l.entry.subtitle.components(separatedBy: " • ").first ?? ""] : artists.map(\.name)
+        ListeningLog.shared.record(ListeningLog.Play(
+            t: Int(Date().timeIntervalSince1970), v: l.videoId, ti: info?.title ?? l.entry.title,
+            ar: names, ai: artists.map(\.id), ty: l.entry.videoType, len: Int(length.rounded()),
+            heard: Int(l.heard.rounded()), at: Int(l.lastPos.rounded()),
+            end: finished ? "done" : how.rawValue, src: l.radio ? "radio" : "list",
+            th: l.entry.art ?? l.entry.thumbnail))
+        // Heard properly (half a minute, or to the end): counts towards rebuilding the home
+        // page; the history page changes either way.
+        if finished || l.heard >= 30 { listenCount += 1 }
+        PageCache.shared.markStale { $0.hasPrefix("page|FEmusic_history|") }
+    }
+
     /// Drops disliked songs from a freshly built queue (keeping the one asked for).
     private func filtered(_ entries: [QueueEntry], keep keepIndex: Int?) -> ([QueueEntry], Int) {
         guard !disliked.isEmpty else { return (entries, keepIndex ?? 0) }
@@ -806,7 +950,6 @@ final class YTMusic {
     /// Playlists a song can be added to: all of mine (from the index), plus any YouTube
     /// offers that the index doesn't know yet. `contains` comes from the index.
     func playlistOptions(for videoId: String, title: String = "", artist: String = "") async throws -> [PlaylistOption] {
-        if playlistIndex.isEmpty { loadIndexFromDisk() }
         let inside = Set(playlists(containing: videoId, title: title, artist: artist).map(\.id))
         var out = ownPlaylists.map {
             PlaylistOption(playlistId: $0.id, title: $0.title, thumbnail: $0.thumbnail,
@@ -835,6 +978,9 @@ final class YTMusic {
         if let params { args["params"] = params }
         _ = try await call("subscribe", args, as: Ignored.self)
         EngineLog.write(on ? "Abone olundu: \(channelId)" : "Abonelik iptal: \(channelId)")
+        // The home page (favourite artists, stations, new releases) and the artist's page.
+        PageCache.shared.markStale { $0.hasPrefix("home|") }
+        PageCache.shared.forget { $0.hasPrefix("page|\(channelId)|") }
         Task { await loadLibrary() }
     }
 
@@ -871,6 +1017,10 @@ final class YTMusic {
 
     /// Bumped after any playlist change: open playlist pages reload, the sidebar refreshes.
     private(set) var playlistRevision = 0
+
+    /// Songs heard properly since launch (see endListen): the home page is rebuilt every
+    /// few of them.
+    private(set) var listenCount = 0
 
     // MARK: - Which of my playlists contain a song?
     //
@@ -916,15 +1066,12 @@ final class YTMusic {
     }
 
     // The index lives in memory only (nothing on disk); it is rebuilt at each launch.
-    private func loadIndexFromDisk() {}
-    private func saveIndex() {}
 
     func rebuildPlaylistIndex() async {
         guard loggedIn else { return }
         if indexing { indexAgain = true; return }
         indexing = true
         defer { indexing = false }
-        loadIndexFromDisk()
         repeat {
             indexAgain = false
             var fresh: [String: IndexedPlaylist] = [:]
@@ -945,7 +1092,6 @@ final class YTMusic {
                 songs += d.tracks.count
             }
             playlistIndex = fresh
-            saveIndex()
             EngineLog.write("Liste dizini: \(fresh.count) liste (\(fresh.values.filter(\.editable).count) düzenlenebilir), \(songs) şarkı")
         } while indexAgain
         // Reading every playlist leaves a lot of garbage in the script engine.
@@ -957,10 +1103,10 @@ final class YTMusic {
         p.videos.insert(videoId)
         if let t = track, t.videoId == videoId, let k = IndexedPlaylist.key(title: t.title, artist: t.artist) { p.keys.insert(k) }
         playlistIndex[playlistId] = p
-        saveIndex()
     }
 
     private func playlistsChanged(reindex: Bool = true) {
+        PageCache.shared.markStale { $0.hasPrefix("page|VL") || $0.hasPrefix("page|FEmusic_li") }
         playlistRevision += 1
         Task {
             await loadLibrary()
@@ -1002,6 +1148,57 @@ final class YTMusic {
 
     func home(params: String?, browseId: String? = nil) async throws -> BrowsePage {
         try await call("home", ["params": params ?? "", "browseId": browseId ?? ""])
+    }
+
+    /// Regular YouTube's home feed (music only when YouTube offers that filter).
+    func youtubeHome() async throws -> YouTubeFeed {
+        try await call("ytHome")
+    }
+
+    /// Latest uploads of the channels the account follows, newest first.
+    func youtubeSubscriptions() async throws -> YouTubeFeed {
+        try await call("ytSubscriptions")
+    }
+
+    /// The account's YouTube notifications (the bell) of the last `days` days, newest
+    /// first. Read only: nothing is marked as seen or read on YouTube.
+    func youtubeNotifications(days: Int) async throws -> NotificationFeed {
+        try await call("ytNotifications", ["days": days])
+    }
+
+    /// Whether a channel is a music channel (artist, label, festival), decided once per
+    /// session: kept in memory only, gone when the app quits or the account changes.
+    @ObservationIgnored var musicChannels: [String: Bool] = [:]
+
+    /// A video's channel and category (one request).
+    func youtubeVideoInfo(_ videoId: String) async -> YouTubeVideoInfo? {
+        try? await call("ytVideoInfo", ["videoId": videoId])
+    }
+
+    /// Regular YouTube search (`long`: only videos over 20 minutes).
+    func youtubeSearch(_ query: String, long: Bool) async throws -> YouTubeFeed {
+        try await call("ytSearch", ["query": query, "long": long])
+    }
+
+    /// Artists the account is subscribed to.
+    func subscribedArtists() async throws -> [MediaItem] {
+        try await call("subscriptions")
+    }
+
+    /// A page as YouTube Music shows it in another country (`region` nil: the account's own).
+    func browse(_ browseId: String, params: String?, region: String?) async throws -> BrowsePage {
+        guard let region else { return try await browse(browseId, params: params) }
+        return try await call("browseIn", ["browseId": browseId, "params": params ?? "", "gl": region])
+    }
+
+    /// YouTube Music's charts for the whole world.
+    func globalCharts() async throws -> BrowsePage {
+        try await call("globalCharts")
+    }
+
+    /// What regular YouTube suggests next to a video.
+    func youtubeRelated(_ videoId: String) async throws -> YouTubeFeed {
+        try await call("ytRelated", ["videoId": videoId])
     }
 
     func browse(_ browseId: String, params: String?) async throws -> BrowsePage {

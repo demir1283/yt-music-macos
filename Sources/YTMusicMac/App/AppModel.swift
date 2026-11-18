@@ -6,6 +6,9 @@ struct BrowseTarget: Hashable {
     var params: String?
     var kind: String
     var title: String?
+    /// Set on an artist's popular songs list: the page gets a made cover with the artist's
+    /// name ("<Artist> · Popüler şarkılar") instead of a picture.
+    var coverArtist: String? = nil
 
     static let likedSongs = BrowseTarget(browseId: "VLLM", params: nil, kind: "playlist", title: "Beğenilen Müzikler")
 }
@@ -109,10 +112,38 @@ final class AppModel {
     var libraryFilter: LibraryFilter = .playlists
     var searchQuery = ""
     var searchFocusToken = 0
+    /// Recommendations the user asked not to see ("Beğenmedim", "Bana önerme"): they leave
+    /// every page at once and stay out of the home page.
+    private(set) var hiddenKeys: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "hiddenRecommendations") ?? [])
+
+    func hide(_ item: MediaItem) {
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.9)) {
+            _ = hiddenKeys.insert(item.recommendationKey)
+        }
+        UserDefaults.standard.set(Array(hiddenKeys.prefix(1000)), forKey: "hiddenRecommendations")
+    }
+
+    /// "Bana önerme" on a song in "Sıradaki": out of the queue at once (the engine's
+    /// dislike takes it out of this and every later queue), and off every page.
+    func notInterested(_ entry: QueueEntry) {
+        guard let v = entry.videoId else { return }
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.9)) {
+            engine.rate(videoId: v, status: "DISLIKE")
+            _ = hiddenKeys.insert(v)
+        }
+        UserDefaults.standard.set(Array(hiddenKeys.prefix(1000)), forKey: "hiddenRecommendations")
+    }
+
+    func unhide(_ item: MediaItem) {
+        hiddenKeys.remove(item.recommendationKey)
+        UserDefaults.standard.set(Array(hiddenKeys), forKey: "hiddenRecommendations")
+    }
 
 
     private init() {
         engine = YTMusic.shared
+        // Cards ignore the pointer while a page scrolls under it (see ScrollAwareHover).
+        ScrollActivity.start()
     }
 
     // MARK: Navigation
@@ -139,6 +170,11 @@ final class AppModel {
     }
 
     func open(_ item: MediaItem) {
+        // Mixes (the app's artist mixes, YouTube Mixes) have no page: they start playing.
+        if item.kind == "mix" || item.kind == "artistradio" {
+            play(item)
+            return
+        }
         // Songs, videos and episodes always play — some carry a channel/browse id too,
         // which used to open an empty page instead.
         if item.isTrack && ["song", "video", "episode", "unknown"].contains(item.kind) {
@@ -162,7 +198,7 @@ final class AppModel {
         push(BrowseTarget(browseId: id, params: nil, kind: "album", title: nil))
     }
 
-    func openMore(_ more: MoreLink, title: String) {
+    func openMore(_ more: MoreLink, title: String, artist: String? = nil) {
         if let id = more.browseId {
             let kind: String
             switch more.pageType ?? "" {
@@ -171,7 +207,7 @@ final class AppModel {
             case "MUSIC_PAGE_TYPE_ARTIST", "MUSIC_PAGE_TYPE_USER_CHANNEL": kind = "artist"
             default: kind = "browse"
             }
-            push(BrowseTarget(browseId: id, params: more.params, kind: kind, title: title))
+            push(BrowseTarget(browseId: id, params: more.params, kind: kind, title: title, coverArtist: artist))
         } else if let q = more.query {
             searchQuery = q
             select(.search)
@@ -207,6 +243,15 @@ final class AppModel {
     // MARK: Playback
 
     func play(_ item: MediaItem, context: String? = nil) {
+        // An artist's radio (home page stations): YouTube Music's own radio for the artist.
+        if item.kind == "artistradio", let id = item.browseId {
+            Task {
+                guard let page = try? await engine.browse(id, params: nil),
+                      let ep = page.header?.radio ?? page.header?.shuffle ?? page.header?.play else { return }
+                engine.play(endpoint: ep, context: nil)
+            }
+            return
+        }
         if let ep = item.play {
             engine.play(endpoint: ep, context: context)
         } else if let videoId = item.videoId {
@@ -268,12 +313,45 @@ final class AppModel {
         throw EngineError.js("Bu hesapta podcast sayfası bulunamadı.")
     }
 
+    /// The page from memory while it is current (see PageCache), otherwise fetched again.
+    /// `force`: fetch it in any case.
     func page(for target: BrowseTarget, force: Bool = false) async throws -> BrowsePage {
-        // No page cache: every page is fetched fresh and nothing is kept once you leave it.
+        let key = PageCache.page(target)
+        let cache = PageCache.shared
+        if !force, cache.isFresh(key), let kept = cache.value(key, as: BrowsePage.self) { return kept }
         let page = target.browseId == "FEmusic_podcasts"
             ? try await podcastsPage()
             : try await engine.browse(target.browseId, params: target.params)
+        cache.store(page, for: key, lifetime: PageCache.lifetime(for: target, page))
         return page
+    }
+
+    /// The page kept in memory, current or not (shown at once while a newer one loads).
+    func keptPage(for target: BrowseTarget) -> BrowsePage? {
+        PageCache.shared.value(PageCache.page(target), as: BrowsePage.self)
+    }
+
+    // MARK: Refresh (⌘R)
+
+    /// Bumped by "Yenile": the page on screen fetches itself again.
+    var refreshToken = 0
+
+    func refresh() {
+        let cache = PageCache.shared
+        if let top = path.last {
+            let key = PageCache.page(top)
+            cache.markStale { $0 == key }
+        } else if section == .home {
+            cache.markStale { $0.hasPrefix("home|") }
+        } else if section == .search {
+            cache.markStale { $0.hasPrefix("search|") }
+        } else if section == .library {
+            Task { await engine.loadLibrary() }
+        } else if let t = section.browseTarget {
+            let key = PageCache.page(t)
+            cache.markStale { $0 == key }
+        }
+        refreshToken += 1
     }
 }
 

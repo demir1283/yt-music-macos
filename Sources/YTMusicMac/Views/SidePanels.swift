@@ -287,8 +287,9 @@ struct QueuePanel: View {
                     EmptyStateView(systemImage: "list.bullet", title: "Sıra boş",
                                    message: "Bir şey çalmaya başladığında sıradaki şarkılar burada görünür.")
                 } else if !showCurrent {
-                    ForEach(queue.dropFirst((current ?? -1) + 1)) { entry in
+                    ForEach(queue.dropFirst((current ?? -1) + 1), id: \.rowKey) { entry in
                         QueueRow(entry: entry, current: false)
+                            .transition(Self.rowTransition)
                     }
                 } else {
                     if let c = current {
@@ -304,14 +305,20 @@ struct QueuePanel: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 10)
                         .padding(.top, 14)
-                    ForEach(queue.dropFirst((current ?? -1) + 1)) { entry in
+                    ForEach(queue.dropFirst((current ?? -1) + 1), id: \.rowKey) { entry in
                         QueueRow(entry: entry, current: false)
+                            .transition(Self.rowTransition)
                     }
                 }
             }
             .padding(8)
         }
     }
+
+    /// A song taken out slides away; the rest close the gap.
+    static let rowTransition = AnyTransition.asymmetric(
+        insertion: .opacity,
+        removal: .move(edge: .trailing).combined(with: .opacity))
 }
 
 struct QueueRow: View {
@@ -356,6 +363,15 @@ struct QueueRow: View {
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .onTapGesture { if !current { app.engine.playQueue(index: entry.index) } }
+        .contextMenu {
+            if !current {
+                Button("Çal") { app.engine.playQueue(index: entry.index) }
+                if entry.videoId != nil {
+                    Divider()
+                    Button("Bana önerme") { app.notInterested(entry) }
+                }
+            }
+        }
     }
 }
 

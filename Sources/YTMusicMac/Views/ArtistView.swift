@@ -8,21 +8,37 @@ struct ArtistView: View {
     @ViewState var page: BrowsePage? = nil
     @ViewState var error: String? = nil
 
-    private var name: String { page?.header?.title ?? target.title ?? "" }
+    private var name: String { shown?.header?.title ?? target.title ?? "" }
+
+    /// The page loaded here, or the one kept in memory from before (shown at once).
+    private var shown: BrowsePage? {
+        page ?? app.keptPage(for: target)
+    }
+
+    /// Checks again on ⌘R and when the app comes back to the screen.
+    private var taskKey: String {
+        "\(app.engine.sessionID)|\(app.refreshToken)|\(AppActivity.shared.isVisible)"
+    }
 
     var body: some View {
+        let current = shown
         ScrollView {
             // Lazy: shelves far below the window are built (and their covers loaded) only
             // when scrolled to, instead of all at once.
             LazyVStack(alignment: .leading, spacing: d.sectionGap) {
-                if let page {
+                if let page = current {
                     hero(page.header)
                     ForEach(page.sections) { s in
-                        if s.layout == "list" && s.hasTracks {
-                            TrackListSection(section: s, limit: 5, numbered: false)
-                        } else {
-                            ShelfView(section: s)
+                        VStack(alignment: .leading, spacing: 0) {
+                            // The popular songs list opened from here gets a cover with the artist's name.
+                            if s.layout == "list" && s.hasTracks {
+                                TrackListSection(section: s, limit: 5, numbered: false)
+                                    .environment(\.pageArtist, name)
+                            } else {
+                                ShelfView(section: s)
+                            }
                         }
+                        .fadeSwap(s.contentKey, id: s.id)
                     }
                     if let about = page.header?.description, !about.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
@@ -48,7 +64,7 @@ struct ArtistView: View {
         }
         .navigationTitle(name)
         .pageChrome()
-        .task { await load() }
+        .task(id: taskKey) { await load() }
     }
 
     private func hero(_ h: PageHeader?) -> some View {
@@ -98,19 +114,30 @@ struct ArtistView: View {
     private func playShuffle(_ h: PageHeader?) {
         if let ep = h?.shuffle ?? h?.play {
             app.engine.play(endpoint: ep)
-        } else if let first = page?.sections.flatMap(\.items).first(where: { $0.isTrack }) {
+        } else if let first = shown?.sections.flatMap(\.items).first(where: { $0.isTrack }) {
             app.play(first)
         }
     }
 
     private func load() async {
         error = nil
+        if page == nil, let kept = app.keptPage(for: target) { page = kept }
+        // Kept and still current: nothing to fetch.
+        if page != nil, PageCache.shared.isFresh(PageCache.page(target)) { return }
         do {
-            let loaded = try await app.page(for: target)
-            page = loaded
+            let loaded = try await app.page(for: target, force: true)
+            guard !Task.isCancelled else { return }
+            if let old = page {
+                // Refreshed behind the page: only rows that changed fade over.
+                if !old.sameContent(as: loaded) {
+                    withAnimation(.easeInOut(duration: 0.35)) { page = loaded }
+                }
+            } else {
+                page = loaded
+            }
         } catch is CancellationError {
         } catch {
-            self.error = error.localizedDescription
+            if page == nil { self.error = error.localizedDescription }
         }
     }
 }

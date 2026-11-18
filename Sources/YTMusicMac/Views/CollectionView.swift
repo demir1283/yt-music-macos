@@ -15,6 +15,11 @@ struct CollectionView: View {
     @ViewState var actionError: String? = nil
 
     private var isAlbum: Bool { target.kind == "album" }
+
+    /// Checks again on ⌘R and when the app comes back to the screen.
+    private var taskKey: String {
+        "\(app.engine.sessionID)|\(app.refreshToken)|\(AppActivity.shared.isVisible)"
+    }
     private var isLiked: Bool { target.browseId == "VLLM" }
     private var title: String { page?.header?.title.isEmpty == false ? (page?.header?.title ?? "") : (target.title ?? "") }
 
@@ -62,7 +67,7 @@ struct CollectionView: View {
         }
         .navigationTitle(title)
         .pageChrome()
-        .task { await load() }
+        .task(id: taskKey) { await load() }
         .onChange(of: app.engine.playlistRevision) { _, _ in
             // Something changed in a playlist (maybe this one): reload quietly.
             Task { await load(force: true) }
@@ -155,8 +160,10 @@ struct CollectionView: View {
                         Image(systemName: "heart.fill").font(.system(size: d.headerArt / 3)).foregroundStyle(.white)
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                } else if let artist = target.coverArtist, !artist.isEmpty {
+                    ArtistListCover(artist: artist, label: M.turkish ? "Popüler şarkılar" : "Top songs")
                 } else {
-                    Artwork(url: page?.header?.thumbnail, cornerRadius: 10, placeholder: "music.note.list")
+                    Artwork(url: page?.header?.thumbnail.flatMap { $0.isEmpty ? nil : $0 }, cornerRadius: 10, placeholder: "music.note.list")
                 }
             }
             .frame(width: d.headerArt, height: d.headerArt)
@@ -254,19 +261,35 @@ struct CollectionView: View {
 
     // MARK: Loading
 
+    /// Shows the page kept in memory at once and fetches it again only when it is no
+    /// longer current (`force`: in any case, e.g. after the playlist was edited).
     private func load(force: Bool = false) async {
         error = nil
+        if page == nil, let kept = app.keptPage(for: target) { apply(kept) }
+        if !force, page != nil, PageCache.shared.isFresh(PageCache.page(target)) { return }
         do {
-            let p = try await app.page(for: target, force: force)
-            let main = p.sections.first { $0.layout == "list" && $0.hasTracks }
-            trackSectionID = main?.id
-            tracks = (main?.items ?? []).filter(\.isTrack)
-            continuation = main?.continuation
-            page = p
+            let p = try await app.page(for: target, force: true)
+            guard !Task.isCancelled else { return }
+            if let old = page {
+                // Unchanged: the list stays as it is (with the songs loaded further down).
+                if !old.sameContent(as: p) {
+                    withAnimation(.easeInOut(duration: 0.35)) { apply(p) }
+                }
+            } else {
+                apply(p)
+            }
         } catch is CancellationError {
         } catch {
-            self.error = error.localizedDescription
+            if page == nil { self.error = error.localizedDescription }
         }
+    }
+
+    private func apply(_ p: BrowsePage) {
+        let main = p.sections.first { $0.layout == "list" && $0.hasTracks }
+        trackSectionID = main?.id
+        tracks = (main?.items ?? []).filter(\.isTrack)
+        continuation = main?.continuation
+        page = p
     }
 
     private func loadMore() {
@@ -282,5 +305,49 @@ struct CollectionView: View {
                 continuation = nil
             }
         }
+    }
+}
+
+/// Made cover for an artist's popular songs list (Spotify / YouTube Music style): the
+/// artist's colour (the same one as their station card), the list's name and the artist's
+/// name in large type. Drawn, not downloaded.
+private struct ArtistListCover: View {
+    let artist: String
+    let label: String
+
+    var body: some View {
+        GeometryReader { geo in
+            let s = geo.size.width
+            let color = HomePalette.color(for: artist)
+            ZStack(alignment: .bottomLeading) {
+                LinearGradient(colors: [color, color.opacity(0.78)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    .background(Color.black)
+                Image(systemName: "waveform")
+                    .font(.system(size: s * 0.62, weight: .bold))
+                    .foregroundStyle(.black.opacity(0.07))
+                    .frame(width: s, height: s, alignment: .topTrailing)
+                    .offset(x: s * 0.16, y: -s * 0.06)
+                VStack(alignment: .leading, spacing: s * 0.03) {
+                    HStack(spacing: s * 0.03) {
+                        Rectangle().fill(.black.opacity(0.75)).frame(width: s * 0.02, height: s * 0.075)
+                        Text(M.turkish ? label.uppercased(with: Locale(identifier: "tr_TR")) : label.uppercased())
+                            .font(.system(size: s * 0.058, weight: .heavy))
+                            .tracking(s * 0.004)
+                            .foregroundStyle(.black.opacity(0.72))
+                            .lineLimit(1)
+                    }
+                    Text(artist)
+                        .font(.system(size: s * 0.15, weight: .heavy))
+                        .foregroundStyle(.black)
+                        .lineLimit(3)
+                        .minimumScaleFactor(0.45)
+                        .multilineTextAlignment(.leading)
+                }
+                .padding(s * 0.08)
+            }
+            .frame(width: s, height: s)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .aspectRatio(1, contentMode: .fit)
     }
 }
