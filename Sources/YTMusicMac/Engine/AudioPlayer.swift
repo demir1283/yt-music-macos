@@ -5,9 +5,11 @@ import AVFoundation
 ///
 /// Buffering: nothing is written to disk. The playing song keeps about a minute buffered
 /// ahead in memory (a 3-hour set is never held whole: ~1.9 MB at 256 kbps, refilled as it
-/// plays). The next song's first 10 seconds wait in a second, silent player (`Standby`,
-/// ~320 KB); when that song comes up, the standby player simply takes over, so the change
-/// is immediate instead of waiting for the first bytes to download.
+/// plays; long files are handed over as a playlist of their pieces, see `DashToHLS`, so
+/// AVPlayer doesn't read them through before starting). The next song's first 10 seconds
+/// wait in a second, silent player (`Standby`, ~320 KB); when that song comes up, the
+/// standby player simply takes over, so the change is immediate instead of waiting for the
+/// first bytes to download.
 @MainActor
 final class AudioPlayer {
     private var player = AVPlayer()
@@ -21,6 +23,10 @@ final class AudioPlayer {
     private var finished = false
     /// Seek-then-play to perform once the new item is ready (resuming a saved position).
     private var pendingStart: (seek: Double, play: Bool)?
+    /// Diagnostic log only: when the current item was given to the player (cleared once it
+    /// plays), and the last waiting reason written.
+    private var loadedAt: Date?
+    private var toldWait: String?
 
     var onTime: ((Double) -> Void)?
     var onState: ((_ playing: Bool, _ buffering: Bool) -> Void)?
@@ -35,6 +41,15 @@ final class AudioPlayer {
     var isMuted: Bool {
         get { player.isMuted }
         set { player.isMuted = newValue }
+    }
+
+    /// CoreAudio UID of the device to play to; nil follows the system output. The waiting
+    /// player gets it too, so the next song comes out of the same place.
+    var outputDeviceUID: String? {
+        didSet {
+            player.audioOutputDeviceUniqueID = outputDeviceUID
+            standby?.player.audioOutputDeviceUniqueID = outputDeviceUID
+        }
     }
 
     var hasItem: Bool { player.currentItem != nil }
@@ -54,9 +69,10 @@ final class AudioPlayer {
         let player = AVPlayer()
         let url: URL
 
-        init(url: URL, item: AVPlayerItem) {
+        init(url: URL, item: AVPlayerItem, output: String?) {
             self.url = url
             player.isMuted = true
+            player.audioOutputDeviceUniqueID = output
             player.automaticallyWaitsToMinimizeStalling = true
             player.allowsExternalPlayback = false
             player.replaceCurrentItem(with: item)   // a paused player still buffers its item
@@ -101,7 +117,11 @@ final class AudioPlayer {
             // googlevideo serves raw MP4 audio; tell AVFoundation so it doesn't have to guess.
             options[AVURLAssetOverrideMIMETypeKey] = "audio/mp4"
         }
-        let item = AVPlayerItem(asset: AVURLAsset(url: url, options: options))
+        let asset = AVURLAsset(url: url, options: options)
+        if url.scheme == DashToHLS.scheme {
+            asset.resourceLoader.setDelegate(DashToHLS.shared, queue: DashToHLS.shared.queue)
+        }
+        let item = AVPlayerItem(asset: asset)
         // Only this much is downloaded ahead; nothing beyond it sits in memory.
         item.preferredForwardBufferDuration = buffer
         return item
@@ -111,7 +131,8 @@ final class AudioPlayer {
     func prepareNext(url: URL, headers: [String: String]) {
         if standby?.url == url { return }
         standby?.discard()
-        standby = Standby(url: url, item: Self.makeItem(url: url, headers: headers, buffer: Self.standbySeconds))
+        standby = Standby(url: url, item: Self.makeItem(url: url, headers: headers, buffer: Self.standbySeconds),
+                          output: outputDeviceUID)
     }
 
     /// Drops the prepared next song (the queue changed).
@@ -121,6 +142,12 @@ final class AudioPlayer {
     }
 
     func load(url: URL, headers: [String: String], duration: Double, autoplay: Bool, startAt: Double = 0) {
+        if EngineLog.enabled {
+            loadedAt = Date()
+            toldWait = nil
+            EngineLog.write("Oynatıcı: yükleniyor — çıkış \(outputDeviceUID ?? "sistem")"
+                            + (standby?.url == url ? ", önceden hazırlanmış" : ""))
+        }
         clearItemObservers()
         finished = false
         knownDuration = duration
@@ -151,6 +178,7 @@ final class AudioPlayer {
         old.replaceCurrentItem(with: nil)
         next.volume = old.volume
         next.isMuted = old.isMuted
+        next.audioOutputDeviceUniqueID = outputDeviceUID
         player = next
         attachPlayerObservers()
         item.preferredForwardBufferDuration = Self.playingSeconds
@@ -183,6 +211,9 @@ final class AudioPlayer {
 
     private func statusChanged(_ id: ObjectIdentifier, _ status: AVPlayerItem.Status, _ message: String) {
         guard id == currentID else { return }
+        if status == .readyToPlay, let t = loadedAt {
+            EngineLog.write(String(format: "Oynatıcı: öğe hazır (+%.1f sn)", Date().timeIntervalSince(t)))
+        }
         if status == .failed {
             failed(id, message)
         } else if status == .readyToPlay, let p = pendingStart {
@@ -233,7 +264,33 @@ final class AudioPlayer {
     private func stateChanged() {
         guard currentID != nil else { return }
         let status = player.timeControlStatus
+        if let t = loadedAt {
+            if status == .waitingToPlayAtSpecifiedRate {
+                let why = (player.reasonForWaitingToPlay?.rawValue ?? "?").replacingOccurrences(of: "AVPlayerWaiting", with: "")
+                if why != toldWait {
+                    toldWait = why
+                    EngineLog.write(String(format: "Oynatıcı: bekliyor — %@ (+%.1f sn)", why, Date().timeIntervalSince(t)))
+                }
+            } else if status == .playing {
+                loadedAt = nil
+                let event = player.currentItem?.accessLog()?.events.last
+                EngineLog.write(String(format: "Oynatıcı: çalıyor (+%.1f sn) — indirme %.0f kbps, %lld bayt, ara bellek %.1f sn",
+                                       Date().timeIntervalSince(t), (event?.observedBitrate ?? 0) / 1000,
+                                       event?.numberOfBytesTransferred ?? 0, bufferedAhead))
+            }
+        }
         onState?(status != .paused, status == .waitingToPlayAtSpecifiedRate)
+    }
+
+    /// Seconds loaded ahead of the play position (diagnostic log).
+    private var bufferedAhead: Double {
+        guard let item = player.currentItem else { return 0 }
+        let now = item.currentTime().seconds
+        for value in item.loadedTimeRanges {
+            let range = value.timeRangeValue
+            if range.start.seconds <= now + 0.5, range.end.seconds >= now { return range.end.seconds - now }
+        }
+        return 0
     }
 
     private func finish(_ id: ObjectIdentifier) {

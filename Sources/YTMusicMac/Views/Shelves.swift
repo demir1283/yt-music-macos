@@ -196,7 +196,7 @@ struct ItemCard: View {
                 Artwork(url: item.thumbnail, cornerRadius: 8, circle: false,
                         placeholder: item.isArtist ? "person.fill" : "music.note")
                     .frame(width: width, height: imageHeight ?? (item.wide ? width * 9 / 16 : width))
-                    .shadow(color: .black.opacity(hover ? 0.25 : 0.12), radius: hover ? 10 : 4, y: 3)
+                    .cardShadow(cornerRadius: 8, opacity: hover ? 0.25 : 0.12, radius: hover ? 10 : 4, y: 3)
                 if item.kind == "mix" {
                     MixBand(title: item.title, width: width)
                 }

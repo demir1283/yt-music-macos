@@ -8,10 +8,14 @@ import WebKit
 /// The same script the hidden web player used (`BridgeScript.source`) is evaluated in a
 /// bare JavaScriptCore context; its HTTP requests are carried out here with URLSession,
 /// using the signed-in cookies. No WebKit page (and none of its memory) is involved.
-@MainActor
-final class NativeCore {
+///
+/// The script runs on its own serial queue, never on the main thread: reading YouTube's
+/// answers (up to 3 MB of JSON each, a dozen at once at launch) would otherwise hold up
+/// drawing and scrolling. Everything that touches the context goes through `queue`.
+final class NativeCore: @unchecked Sendable {
     private let ctx: JSContext
     private let session: URLSession
+    private let queue = DispatchQueue(label: "ytmusic.script", qos: .userInitiated)
 
     init?() {
         guard let c = JSContext() else { return nil }
@@ -24,7 +28,9 @@ final class NativeCore {
         cfg.urlCache = nil
         cfg.timeoutIntervalForRequest = 25
         session = URLSession(configuration: cfg)
-        install()
+        // Loaded on the script's queue: the main thread doesn't wait. Every later use of the
+        // context goes through the same queue, so it always comes after this.
+        queue.async { [self] in install() }
     }
 
     private func install() {
@@ -32,6 +38,7 @@ final class NativeCore {
             NSLog("YT Music JS: %@", error?.toString() ?? "?")
         }
         let session = self.session
+        let queue = self.queue
         let userAgent = YTAuth.userAgent
         let http: @convention(block) (String, String, String, String, String, JSValue, JSValue) -> Void = {
             url, method, headersJSON, body, auth, resolve, reject in
@@ -55,7 +62,7 @@ final class NativeCore {
                 let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                 let text = String(decoding: data ?? Data(), as: UTF8.self)
                 let message = error?.localizedDescription
-                DispatchQueue.main.async {
+                queue.async {
                     if let message {
                         reject.call(withArguments: [message])
                     } else {
@@ -72,34 +79,38 @@ final class NativeCore {
 
     /// Frees what the script engine no longer needs (after loading many pages at once).
     func collectGarbage() {
-        JSGarbageCollect(ctx.jsGlobalContextRef)
-        // Freed blocks otherwise stay counted against the app (≈ 40 MB after start-up).
-        malloc_zone_pressure_relief(nil, 0)
+        queue.async { [ctx] in
+            JSGarbageCollect(ctx.jsGlobalContextRef)
+            // Freed blocks otherwise stay counted against the app (≈ 40 MB after start-up).
+            malloc_zone_pressure_relief(nil, 0)
+        }
     }
 
     /// Calls one of the script's commands and returns its JSON result.
     func call(_ name: String, argsJSON: String) async throws -> String {
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<String, Error>) in
-            guard let api = ctx.objectForKeyedSubscript("__ytmusic"), !api.isUndefined,
-                  let promise = api.invokeMethod("call", withArguments: [name, argsJSON]),
-                  !promise.isUndefined, !promise.isNull else {
-                cont.resume(throwing: EngineError.notReady)
-                return
-            }
-            let ok: @convention(block) (JSValue) -> Void = { value in
-                cont.resume(returning: value.toString() ?? "null")
-            }
-            let fail: @convention(block) (JSValue) -> Void = { error in
-                var message = error.toString() ?? "Bilinmeyen hata"
-                if error.isObject, let m = error.objectForKeyedSubscript("message"), m.isString {
-                    message = m.toString() ?? message
+            queue.async { [ctx] in
+                guard let api = ctx.objectForKeyedSubscript("__ytmusic"), !api.isUndefined,
+                      let promise = api.invokeMethod("call", withArguments: [name, argsJSON]),
+                      !promise.isUndefined, !promise.isNull else {
+                    cont.resume(throwing: EngineError.notReady)
+                    return
                 }
-                cont.resume(throwing: EngineError.js(message))
+                let ok: @convention(block) (JSValue) -> Void = { value in
+                    cont.resume(returning: value.toString() ?? "null")
+                }
+                let fail: @convention(block) (JSValue) -> Void = { error in
+                    var message = error.toString() ?? "Bilinmeyen hata"
+                    if error.isObject, let m = error.objectForKeyedSubscript("message"), m.isString {
+                        message = m.toString() ?? message
+                    }
+                    cont.resume(throwing: EngineError.js(message))
+                }
+                promise.invokeMethod("then", withArguments: [
+                    unsafeBitCast(ok, to: AnyObject.self),
+                    unsafeBitCast(fail, to: AnyObject.self),
+                ])
             }
-            promise.invokeMethod("then", withArguments: [
-                unsafeBitCast(ok, to: AnyObject.self),
-                unsafeBitCast(fail, to: AnyObject.self),
-            ])
         }
     }
 

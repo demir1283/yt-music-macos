@@ -53,6 +53,7 @@ actor SigSolver {
 
         if pre == nil {
             EngineLog.write("Çözücü: oynatıcı betiği indiriliyor (\(id))")
+            let fetchStarted = Date()
             var req = URLRequest(url: playerURL)
             req.setValue(YTAuth.userAgent, forHTTPHeaderField: "User-Agent")
             req.timeoutInterval = 30
@@ -82,7 +83,8 @@ actor SigSolver {
             }
             pre = s
             Self.saveSolver(s, sts: foundSts, pre: preFile, stsFile: stsFile)
-            EngineLog.write(String(format: "Çözücü hazır (%.1f sn)", Date().timeIntervalSince(started)))
+            EngineLog.write(String(format: "Çözücü hazır (indirme %.1f sn, hazırlama %.1f sn)",
+                                   started.timeIntervalSince(fetchStarted), Date().timeIntervalSince(started)))
         }
 
         // A fresh, small context holding only the two solver functions.

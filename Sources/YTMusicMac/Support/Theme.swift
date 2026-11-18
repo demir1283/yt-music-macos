@@ -170,6 +170,27 @@ enum Palette {
         startPoint: .topLeading, endPoint: .bottomTrailing)
 }
 
+// MARK: - Card shadow
+
+extension View {
+    /// A picture card's drop shadow, cast by a plain shape of the same outline behind it
+    /// rather than by the picture: it looks the same, but isn't redrawn while the cover
+    /// loads, fades in or scrolls by (a shadow taken from the picture is, every frame).
+    func cardShadow(cornerRadius: CGFloat, circle: Bool = false, opacity: Double, radius: CGFloat, y: CGFloat = 0) -> some View {
+        background {
+            let fill = Color(nsColor: .windowBackgroundColor)
+            Group {
+                if circle {
+                    Circle().fill(fill)
+                } else {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).fill(fill)
+                }
+            }
+            .shadow(color: .black.opacity(opacity), radius: radius, y: y)
+        }
+    }
+}
+
 // MARK: - Glass (Liquid Glass on macOS 26+, materials before that)
 
 extension View {

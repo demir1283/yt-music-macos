@@ -159,7 +159,7 @@ private struct FeaturedPick: View {
                     HStack(alignment: .center, spacing: d.v(16, 22)) {
                         Artwork(url: item.thumbnail, cornerRadius: 8)
                             .frame(width: cover, height: cover)
-                            .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
+                            .cardShadow(cornerRadius: 8, opacity: 0.3, radius: 10, y: 4)
                         VStack(alignment: .leading, spacing: 6) {
                             Text([item.typeLabel, item.bylineText].filter { !$0.isEmpty }.joined(separator: " • "))
                                 .font(.system(size: 13, weight: .medium))
@@ -311,7 +311,7 @@ private struct StationCard: View {
             }
             .frame(width: side, height: side)
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .shadow(color: .black.opacity(hover ? 0.25 : 0.12), radius: hover ? 10 : 4, y: 3)
+            .cardShadow(cornerRadius: 8, opacity: hover ? 0.25 : 0.12, radius: hover ? 10 : 4, y: 3)
             Text(item.subtitle)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
@@ -396,7 +396,7 @@ private struct SpotlightCard: View {
                     Artwork(url: item.thumbnail, cornerRadius: 6, circle: item.kind == "artistradio",
                             placeholder: item.kind == "artistradio" ? "person.fill" : "music.note")
                         .frame(width: cover, height: cover)
-                        .shadow(color: .black.opacity(0.4), radius: 10, y: 4)
+                        .cardShadow(cornerRadius: 6, circle: item.kind == "artistradio", opacity: 0.4, radius: 10, y: 4)
                     VStack(alignment: .leading, spacing: 6) {
                         Text(item.title)
                             .font(.system(size: d.v(24, 30), weight: .heavy))

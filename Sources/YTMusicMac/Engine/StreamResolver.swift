@@ -10,6 +10,13 @@ struct ResolvedStream {
     let expires: Date
     /// "signed": the account's own stream (deciphered); "direct": anonymous app client.
     var source = "direct"
+    /// Byte ranges of the file's header and of its index, when YouTube gave them.
+    var initRange: ClosedRange<Int>?
+    var indexRange: ClosedRange<Int>?
+    /// A playlist made from that index (`DashToHLS`), so a long file starts at once.
+    var playlist: URL?
+    /// What the player is given.
+    var playURL: URL { playlist ?? url }
 }
 
 enum StreamError: LocalizedError {
@@ -129,6 +136,8 @@ enum StreamResolver {
         var stream = ResolvedStream(url: url, headers: headers, label: label, duration: duration,
                                     expires: expiry(of: url.absoluteString))
         stream.source = "signed"
+        if let r = best.initRange, r.count == 2, r[0] <= r[1] { stream.initRange = r[0]...r[1] }
+        if let r = best.indexRange, r.count == 2, r[0] <= r[1] { stream.indexRange = r[0]...r[1] }
         return stream
     }
 
@@ -206,8 +215,11 @@ enum StreamResolver {
         if let best = audio.first, let s = best["url"] as? String, let url = URL(string: s) {
             if let ms = best["approxDurationMs"] as? String, let exact = Double(ms), exact > 0 { duration = exact / 1000 }
             let kbps = Int((Double(best["averageBitrate"] as? Int ?? best["bitrate"] as? Int ?? 0) / 1000).rounded())
-            return ResolvedStream(url: url, headers: headers, label: "AAC \(kbps) kbps",
-                                  duration: duration, expires: expiry(of: s))
+            var stream = ResolvedStream(url: url, headers: headers, label: "AAC \(kbps) kbps",
+                                        duration: duration, expires: expiry(of: s))
+            stream.initRange = byteRange(best["initRange"])
+            stream.indexRange = byteRange(best["indexRange"])
+            return stream
         }
 
         // 2) HLS: play only its best audio rendition.
@@ -223,6 +235,13 @@ enum StreamResolver {
                                   duration: duration, expires: expiry(of: m))
         }
         throw StreamError.noFormat
+    }
+
+    /// {"start": "0", "end": "722"} → 0...722
+    private static func byteRange(_ value: Any?) -> ClosedRange<Int>? {
+        guard let d = value as? [String: Any],
+              let start = Int("\(d["start"] ?? "")"), let end = Int("\(d["end"] ?? "")"), start <= end else { return nil }
+        return start...end
     }
 
     private static let unreserved = CharacterSet(charactersIn:

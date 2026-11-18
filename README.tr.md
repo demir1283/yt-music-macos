@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="Sürüm 2.0.0" src="https://img.shields.io/badge/s%C3%BCr%C3%BCm-2.0.0-ff2d55">
+  <img alt="Sürüm 2.1.0" src="https://img.shields.io/badge/s%C3%BCr%C3%BCm-2.1.0-ff2d55">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-000000?logo=apple">
   <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white">
   <img alt="MIT Lisansı" src="https://img.shields.io/badge/lisans-MIT-3c8dbc">
@@ -27,6 +27,13 @@
 > **Resmi değildir.** Bu uygulamanın YouTube veya Google ile bir bağlantısı yoktur; onlar tarafından onaylanmamış ya da desteklenmemiştir. “YouTube” ve “YouTube Music”, Google LLC'nin ticari markalarıdır. Kendi YouTube Music hesabın gerekir; en yüksek ses kalitesi için YouTube Music Premium gerekir.
 
 ---
+
+## 2.1'de neler yeni
+
+- **Sesin nereden çıkacağını sen seç:** oynatıcı çubuğunda yeni bir çıkış düğmesi — Mac'in hoparlörleri, Bluetooth, USB ya da monitörün hoparlörleri, yalnızca YT Music için ve hatırlanarak; ya da AirPlay ile Apple TV, HomePod veya AirPlay destekli bir TV.
+- **Anında başlar:** saatlik DJ setleri yaklaşık bir saniyede başlar ve ileri sarma anında olur (önceden 12–30 saniye sürüyordu).
+- **Yeni oynatıcı çubuğu:** ilerleme kapsülün alt kenarı boyunca akar, şarkının yanında geçen ve toplam süre.
+- Ana sayfa yüklenirken **daha akıcı kaydırma**.
 
 ## 2.0'da neler yeni
 
@@ -101,6 +108,8 @@ YouTube Music'in web sitesi ağır bir web uygulaması. Bu ise gerçek bir Mac u
 - Gerçek bir sıra: “Sıradaki”, radyo ve otomatik mix, karıştırma ve tekrar; yukarıdaki radyo düzenlemesiyle.
 - Dinlediklerin YouTube hesabına resmi oynatıcının yaptığı gibi bildirilir — şarkının gerçekten ne kadarını dinlediğin. Birkaç saniyede geçtiğin şarkı dinlenmiş sayılmaz, YouTube'un kendi önerileri de iyileşir.
 - Uygulamayı açtığında son şarkı (ve kaldığın yer) oynatıcıda seni bekler; sıradaki şarkının ilk 10 saniyesi önceden yüklenir, şarkılar boşluksuz geçer.
+- Uzun DJ setleri yaklaşık bir saniyede başlar, ileri sarma anında olur: oynatıcı yalnızca ihtiyaç duyduğu parçaları indirir (bkz. Nasıl çalışır).
+- Sesin nereden çıkacağını oynatıcı çubuğundan seç: Mac'in hoparlörleri, Bluetooth, USB ya da monitörün hoparlörleri — yalnızca YT Music için, hatırlanarak — ya da AirPlay (Apple TV, HomePod, AirPlay destekli TV ve hoparlörler).
 
 **Kitaplığın**
 - Çalma listesi oluştur, yeniden adlandır, açıklama yaz, sil ve gizliliğini değiştir.
@@ -112,7 +121,7 @@ YouTube Music'in web sitesi ağır bir web uygulaması. Bu ise gerçek bir Mac u
 - Medya tuşları, Denetim Merkezi / menü çubuğu Şimdi Çalıyor (uygulamayla her an uyumlu), Dock menüsü, her şey için klavye kısayolları.
 
 **Tasarım**
-- Apple Music tarzı düzen: liste kapaklarıyla yarı saydam kenar çubuğu, yüzen cam oynatıcı, yan panel.
+- Apple Music tarzı düzen: liste kapaklarıyla yarı saydam kenar çubuğu, şarkının ilerlemesi alt kenarında akan yüzen cam oynatıcı, yan panel.
 - Vurgu renginde sakin, hareketsiz bir arka plan deseni (“Akış”) ya da düz arka plan.
 - Ekrana uyum sağlar: büyük ekranda ferah, dizüstünde daha sık. Kaydırma okları yalnızca raf ekrana sığmadığında görünür.
 - Açılmak üzere olan sayfanın şeklinde yükleme önizlemeleri.
@@ -177,14 +186,17 @@ Dinleme geçmişi ─▶ ListeningProfile ─▶ PersonalHome (ana sayfa) · Que
                                                 │
 Akış adresi ──▶ JavaScriptCore'da yt-dlp-ejs (YouTube'un akış sorgusunu çözer)
                                                 │
-                          AVPlayer ──▶ macOS ses (Premium ile 256 kbps AAC)
+               DashToHLS (ses dosyasının kendi dizininden çalma listesi)
+                                                │
+                          AVPlayer ──▶ Mac çıkışı ya da AirPlay (Premium ile 256 kbps AAC)
 ```
 
 ```
 Sources/YTMusicMac/
   App/       uygulama girişi, menüler, Dock menüsü, gezinme modeli
-  Engine/    YTMusic (motor), NativeCore (JavaScriptCore + HTTP), StreamResolver,
-             SigSolver, AudioPlayer, NowPlayingBridge, SyncedLyrics, Models,
+  Engine/    YTMusic (motor), NativeCore (kendi kuyruğunda JavaScriptCore + HTTP),
+             StreamResolver, SigSolver, DashToHLS, AudioPlayer, AudioOutputs,
+             NowPlayingBridge, SyncedLyrics, Models,
              QueueCurator (radyo düzenleme), ListeningLog + ListeningProfile (geçmiş),
              PersonalHome (ana sayfa)
   Support/   tema, yoğunluk, görseller, görünüm durumu yardımcısı

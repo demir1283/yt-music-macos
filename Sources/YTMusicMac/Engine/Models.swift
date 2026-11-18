@@ -326,6 +326,9 @@ struct PlayerData: Codable {
         let url: String?
         let cipher: String?
         let approxDurationMs: String?
+        /// Byte ranges [start, end] of the file's header and of its index.
+        let initRange: [Int]?
+        let indexRange: [Int]?
         let drc: Bool
         let isDefault: Bool
     }

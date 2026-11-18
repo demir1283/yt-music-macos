@@ -144,6 +144,7 @@ final class AppModel {
         engine = YTMusic.shared
         // Cards ignore the pointer while a page scrolls under it (see ScrollAwareHover).
         ScrollActivity.start()
+        AudioOutputs.shared.start()
     }
 
     // MARK: Navigation

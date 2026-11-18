@@ -4,6 +4,8 @@ import SwiftUI
 struct PlayerBar: View {
     @Environment(AppModel.self) private var app
     @ViewState var hover = false
+    /// Where the edge line is being dragged to (seconds); the time readout follows it.
+    @ViewState var scrub: Double? = nil
     @Environment(\.density) private var d
 
     var body: some View {
@@ -11,13 +13,13 @@ struct PlayerBar: View {
             let compact = geo.size.width < 820
             // Layout rule: the controls sit in two equally wide side columns, so the
             // now-playing block between them is always exactly centred in the bar. Inside
-            // the block, the cover is as tall as the text column and the title, artist and
-            // progress line all start at the same edge right of the cover.
+            // the block the cover is as tall as the text column and the times sit at its
+            // right end; the song's progress runs along the bottom edge of the capsule.
             let side: CGFloat = compact ? 110 : 240
             HStack(spacing: 12) {
                 TransportControls(compact: compact)
                     .frame(width: side, alignment: .leading)
-                NowPlayingCenter(artSide: d.playerBar - 14)
+                NowPlayingCenter(artSide: d.playerBar - 14, scrub: scrub)
                     .frame(maxWidth: .infinity)
                 TrailingControls(compact: compact)
                     .frame(width: side, alignment: .trailing)
@@ -29,6 +31,11 @@ struct PlayerBar: View {
                 Capsule().fill(Color(nsColor: .windowBackgroundColor).opacity(hover ? 0.6 : 0))
             )
             .glassCapsule()
+            .overlay(alignment: .bottom) {
+                EdgeProgress(scrub: $scrub)
+                    // On the flat part of the capsule's bottom edge, between its round ends.
+                    .padding(.horizontal, d.playerBar / 2)
+            }
             .scaleEffect(hover ? 1.012 : 1, anchor: .center)
             .shadow(color: .black.opacity(hover ? 0.22 : 0), radius: 16, y: 6)
             .onHover { h in withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) { hover = h } }
@@ -86,8 +93,9 @@ private struct TransportControls: View {
 private struct NowPlayingCenter: View {
     /// Height of the cover (and of the text column beside it).
     let artSide: CGFloat
+    /// Seconds the edge line is being dragged to, while it is.
+    let scrub: Double?
     @Environment(AppModel.self) private var app
-    @ViewState var hover = false
 
     var body: some View {
         let e = app.engine
@@ -99,78 +107,108 @@ private struct NowPlayingCenter: View {
                 .frame(width: isVideo ? (artSide * 16 / 9).rounded() : artSide, height: artSide)
                 .animation(.easeInOut(duration: 0.25), value: isVideo)
 
-            VStack(alignment: .leading, spacing: 1) {
-                Group {
-                    if let t = e.track {
-                        let albumId = e.currentAlbumId
-                        VStack(alignment: .leading, spacing: 0) {
-                            Marquee(id: t.videoId) {
-                                HoverLink(t.title, font: .system(size: 12, weight: .semibold), color: .primary,
-                                          action: albumId.map { id in { app.openAlbum(id) } })
-                                    .help(albumId == nil ? "" : "Albüme git")
-                            }
-                            Marquee(id: t.videoId + "a") {
-                                ArtistByline(artists: e.currentArtists, fallback: t.artist, font: .system(size: 11))
-                            }
+            Group {
+                if let t = e.track {
+                    let albumId = e.currentAlbumId
+                    VStack(alignment: .leading, spacing: 2) {
+                        Marquee(id: t.videoId) {
+                            HoverLink(t.title, font: .system(size: 13, weight: .semibold), color: .primary,
+                                      action: albumId.map { id in { app.openAlbum(id) } })
+                                .help(albumId == nil ? "" : "Albüme git")
                         }
-                        .id(t.videoId)
-                        .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 6)),
-                                                removal: .opacity.combined(with: .offset(y: -6))))
-                    } else {
-                        Text("Çalan bir şey yok")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
+                        Marquee(id: t.videoId + "a") {
+                            ArtistByline(artists: e.currentArtists, fallback: t.artist, font: .system(size: 11.5))
+                        }
                     }
+                    .id(t.videoId)
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 6)),
+                                            removal: .opacity.combined(with: .offset(y: -6))))
+                } else {
+                    Text("Çalan bir şey yok")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                ProgressLine()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            if e.track != nil {
+                TimeReadout(scrub: scrub)
+            }
         }
         .frame(height: artSide)
         // One block of fixed maximum width, centred in the bar by its parent.
         .frame(maxWidth: 520)
         .animation(.easeInOut(duration: 0.35), value: e.track?.videoId)
-        .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hover = h } }
     }
 }
 
-
-private struct ProgressLine: View {
+/// "1:23 / 3:45" at the right end of the now-playing block. While the edge line is
+/// dragged it shows the time the song would jump to.
+private struct TimeReadout: View {
+    let scrub: Double?
     @Environment(AppModel.self) private var app
-    @ViewState var dragValue: Double? = nil
+
+    var body: some View {
+        let e = app.engine
+        let duration = e.track?.duration ?? 0
+        // Wakes once per second of the song, only while it plays and a window is on screen.
+        let ticking = e.isPlaying && !e.isLoading && AppActivity.shared.isVisible && scrub == nil
+        TimelineView(PlaybackSchedule(position: e.position, date: e.positionDate, running: ticking, step: 1)) { ctx in
+            let pos = min(max(scrub ?? e.position(at: ctx.date), 0), duration)
+            Text(formatTime(pos) + " / " + formatTime(duration))
+        }
+        .font(.system(size: 10.5).monospacedDigit())
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .fixedSize()
+        .opacity(duration > 0 ? 1 : 0)
+    }
+}
+
+/// The song's progress as a line along the bottom edge of the capsule. Thin while
+/// listening; under the pointer (and while dragged) it thickens so it is easy to grab.
+private struct EdgeProgress: View {
+    @Binding var scrub: Double?
+    @Environment(AppModel.self) private var app
+    @ViewState var hover = false
 
     var body: some View {
         let e = app.engine
         let activity = AppActivity.shared
-        // Wakes on each whole second of the song (half second while in front, so the bar
-        // moves smoothly), only while it plays and a window is on screen.
-        let ticking = e.isPlaying && !e.isLoading && activity.isVisible
-        TimelineView(PlaybackSchedule(position: e.position, date: e.positionDate, running: ticking,
-                                      step: activity.isActive ? 0.5 : 1)) { ctx in
-            let duration = e.track?.duration ?? 0
-            let pos = dragValue ?? e.position(at: ctx.date)
-            // Room for "1:23:45" on long sets, "3:45" otherwise.
-            let long = duration >= 3600
-            let elapsedW: CGFloat = long ? 44 : (duration >= 600 ? 32 : 28)
-            HStack(spacing: 6) {
-                Text(formatTime(pos))
-                    .frame(width: elapsedW, alignment: .leading)   // starts at the title's edge
-                ThinSlider(value: duration > 0 ? pos / duration : 0,
-                           onChanged: { dragValue = $0 * duration },
-                           onEnded: {
-                               e.seek(to: $0 * duration)
-                               dragValue = nil
-                           })
-                Text(duration > 0 ? "-" + formatTime(max(0, duration - pos)) : "")
-                    .frame(width: elapsedW + 6, alignment: .leading)
+        let duration = e.track?.duration ?? 0
+        let thick = hover || scrub != nil
+        // Moves smoothly (half-second steps) while the window is in front, once a second
+        // otherwise; stops while paused or hidden.
+        let ticking = e.isPlaying && !e.isLoading && activity.isVisible && scrub == nil
+        GeometryReader { g in
+            let w = max(1, g.size.width)
+            TimelineView(PlaybackSchedule(position: e.position, date: e.positionDate, running: ticking,
+                                          step: activity.isActive ? 0.5 : 1)) { ctx in
+                let pos = scrub ?? e.position(at: ctx.date)
+                let v = duration > 0 ? min(max(pos / duration, 0), 1) : 0
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.1))
+                    Capsule().fill(Color.primary.opacity(thick ? 0.8 : 0.55))
+                        .frame(width: w * v)
+                }
+                .frame(height: thick ? 5 : 2.5)
+                .frame(maxHeight: .infinity, alignment: .bottom)
             }
-            .font(.system(size: 10).monospacedDigit())
-            .lineLimit(1)
-            .fixedSize(horizontal: false, vertical: true)
-            .foregroundStyle(.secondary)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { drag in scrub = min(max(drag.location.x / w, 0), 1) * duration }
+                    .onEnded { drag in
+                        e.seek(to: min(max(drag.location.x / w, 0), 1) * duration)
+                        scrub = nil
+                    }
+            )
         }
-        .disabled(e.track == nil)
+        // A strip just tall enough to grab, kept clear of the buttons above it.
+        .frame(height: 8)
+        .disabled(e.track == nil || duration <= 0)
+        .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hover = h } }
+        .animation(.easeOut(duration: 0.12), value: thick)
     }
 }
 
@@ -242,6 +280,7 @@ private struct TrailingControls: View {
                            onEnded: { e.setVolume(($0 * 100).rounded()) })
                     .frame(width: 80)
             }
+            OutputButton()
             let hasLyrics = LyricsCenter.shared.available(for: e.track?.videoId)
             ToolbarIconButton(system: "quote.bubble", size: 14, active: hasLyrics && app.isPanelVisible && app.showLyrics,
                               help: !hasLyrics ? "Bu şarkının sözleri yok"

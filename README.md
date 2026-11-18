@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 2.0.0" src="https://img.shields.io/badge/version-2.0.0-ff2d55">
+  <img alt="Version 2.1.0" src="https://img.shields.io/badge/version-2.1.0-ff2d55">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-000000?logo=apple">
   <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white">
   <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-3c8dbc">
@@ -27,6 +27,13 @@
 > **Unofficial.** This app is not affiliated with, endorsed by or sponsored by YouTube or Google. “YouTube” and “YouTube Music” are trademarks of Google LLC. You need your own YouTube Music account; YouTube Music Premium unlocks the highest audio quality.
 
 ---
+
+## What's new in 2.1
+
+- **Choose where the sound goes:** an output button in the player bar — the Mac's speakers, Bluetooth, USB or a display's speakers, for YT Music only and remembered; or AirPlay to an Apple TV, HomePod or AirPlay TV.
+- **Starts at once:** hour-long DJ sets start in about a second and seek instantly (they used to take 12–30 seconds).
+- **A new player bar:** the progress runs along the capsule's bottom edge, with elapsed and total time beside the song.
+- **Smoother scrolling** while the home page loads.
 
 ## What's new in 2.0
 
@@ -101,6 +108,8 @@ The YouTube Music website is a heavy web app. This is a real Mac app instead: no
 - A real queue: “Up next”, radio and automix, shuffle and repeat, with the radio cleanup above.
 - Your listening is reported to your YouTube account the way the official player does it — how much of a song you actually heard — so a song skipped after a few seconds doesn't count as listened, and YouTube's own recommendations improve too.
 - The last song (and where you stopped) is back in the player when you open the app; the next song's first 10 seconds are loaded ahead, so songs change without a gap.
+- Long DJ sets start in about a second and seek instantly: the player fetches only the pieces it needs (see How it works).
+- Choose where the sound goes from the player bar: the Mac's speakers, Bluetooth, USB or a display's speakers — for YT Music only, remembered — or AirPlay (Apple TV, HomePod, AirPlay TVs and speakers).
 
 **Your library**
 - Create, rename, describe and delete playlists, and change their privacy.
@@ -112,7 +121,7 @@ The YouTube Music website is a heavy web app. This is a real Mac app instead: no
 - Media keys, Control Center / menu bar Now Playing (always in step with the app), Dock menu, keyboard shortcuts for everything.
 
 **Design**
-- Apple Music–style layout: translucent sidebar with playlist covers, floating glass player, side panel.
+- Apple Music–style layout: translucent sidebar with playlist covers, floating glass player with the song's progress along its bottom edge, side panel.
 - A calm, still background pattern in your accent colour (“Flow”), or plain.
 - Adapts to the screen: roomy on a large display, denser on a laptop. Scroll arrows appear only when a row doesn't fit.
 - Loading previews shaped like the page that is about to appear.
@@ -177,14 +186,17 @@ Listening history ─▶ ListeningProfile ─▶ PersonalHome (home page) · Que
                                                │
 Stream address ──▶ yt-dlp-ejs in JavaScriptCore (solves YouTube's stream challenge)
                                                │
-                         AVPlayer ──▶ macOS audio (256 kbps AAC with Premium)
+              DashToHLS (a playlist from the audio file's own index)
+                                               │
+                         AVPlayer ──▶ Mac output or AirPlay (256 kbps AAC with Premium)
 ```
 
 ```
 Sources/YTMusicMac/
   App/       app entry, menus, Dock menu, navigation model
-  Engine/    YTMusic (the engine), NativeCore (JavaScriptCore + HTTP), StreamResolver,
-             SigSolver, AudioPlayer, NowPlayingBridge, SyncedLyrics, Models,
+  Engine/    YTMusic (the engine), NativeCore (JavaScriptCore on its own queue + HTTP),
+             StreamResolver, SigSolver, DashToHLS, AudioPlayer, AudioOutputs,
+             NowPlayingBridge, SyncedLyrics, Models,
              QueueCurator (radio cleanup), ListeningLog + ListeningProfile (history),
              PersonalHome (the home page)
   Support/   theme, density, images, view-state helper

@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.1.0 — 2026-11-19
+
+Where the sound goes, and songs that start at once.
+
+### Player bar
+- New layout: the song's progress runs along the bottom edge of the glass capsule. It thickens under the pointer and while dragged, to seek.
+- Elapsed and total time ("1:23 / 3:45") at the right of the now-playing block; while seeking it shows the time you'd jump to. Title and artist have the two lines to themselves.
+
+### Sound output and AirPlay
+- New output button in the player bar. Play to the Mac's speakers, Bluetooth, USB or a display's speakers — for YT Music only, the system output stays as it is. The choice is remembered; while the device is unplugged the system output is used, and the app goes back to it once it's connected again.
+- AirPlay: Apple TV, HomePod, AirPlay TVs and speakers, through the system AirPlay menu. macOS gives apps no way to pick an AirPlay receiver by themselves, so that choice isn't remembered.
+
+### Starts at once
+- Long recordings start in about a second and seek instantly. YouTube's audio files carry an index of their ~10-second pieces; AVPlayer now gets a playlist written from that index (same file, same quality, nothing re-encoded) instead of the file itself, which it read almost in full before starting: an hour-long set took 12–30 seconds and 50–60 MB before the first note, now about 150 KB. If the index can't be read, the file is played as before.
+
+### Smoother
+- YouTube's answers (up to 3 MB of JSON each, a dozen at once at launch) are read on a queue of their own instead of the main thread. The longest hitch while scrolling the freshly loaded home page went from about half a second to under 80 ms.
+- Card shadows are cast by a plain shape instead of the cover, so they aren't redrawn while covers load, fade in or scroll by; covers that arrive mid-scroll appear without fading.
+
+### Under the hood
+- Diagnostic log (off by default) shows the stages of starting a song: stream, player ready, why it waits, download rate, first sound.
+
 ## 2.0.0 — 2026-11-18
 
 A recommendation layer of its own on top of YouTube Music, and a new home page.

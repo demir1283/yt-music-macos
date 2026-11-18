@@ -181,6 +181,8 @@ struct RemoteImage: View {
                     img = await ImageLoader.shared.load(url, maxPixel: budget)
                 }
                 guard !Task.isCancelled else { return }
+                // A cover landing mid-scroll just appears: dozens fading in at once cost frames.
+                if ScrollActivity.isScrolling { fade = false }
                 image = img
                 loadedURL = url
             }

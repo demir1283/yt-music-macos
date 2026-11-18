@@ -55,6 +55,10 @@ final class YTMusic {
     @ObservationIgnored private var playerSts: Int?
     /// Videos whose signed stream failed in AVPlayer: use the anonymous route for them.
     @ObservationIgnored private var unsignedOnly: Set<String> = []
+    /// Videos whose playlist (`DashToHLS`) failed in AVPlayer: play their file as it is.
+    @ObservationIgnored private var directOnly: Set<String> = []
+    /// Whether the playing song was given to AVPlayer as such a playlist.
+    @ObservationIgnored private var currentViaPlaylist = false
 
     // Connection
     private(set) var isReady = false
@@ -145,6 +149,7 @@ final class YTMusic {
         defer { booting = false }
         loadError = nil
         if !booted { EngineLog.reset() }
+        EngineLog.write("Başlangıç: istek")
         if core == nil { core = NativeCore() }
         guard let core else {
             loadError = "JavaScript motoru başlatılamadı."
@@ -419,11 +424,19 @@ final class YTMusic {
         }
     }
 
+    /// When the current song was asked for; cleared once its sound starts (diagnostic log).
+    @ObservationIgnored private var playRequestedAt: Date?
+
     private func ensureAudio() -> AudioPlayer {
         if let audio { return audio }
         let a = AudioPlayer()
         a.volume = volume
         a.isMuted = muted
+        // Plays to the output chosen in the player bar (or the system one) and follows it.
+        let outputs = AudioOutputs.shared
+        outputs.start()
+        a.outputDeviceUID = outputs.activeUID
+        outputs.onChange = { [weak a] uid in a?.outputDeviceUID = uid }
         a.onTime = { [weak self] t in self?.audioTime(t) }
         a.onState = { [weak self] playing, buffering in self?.audioState(playing: playing, buffering: buffering) }
         a.onEnded = { [weak self] in self?.audioEnded() }
@@ -459,8 +472,11 @@ final class YTMusic {
                 EngineLog.write("Akış (uygulama) \(videoId): \(error.localizedDescription)")
             }
         }
-        guard let s = result else { throw StreamError.unplayable(errors.joined(separator: "; ")) }
+        guard var s = result else { throw StreamError.unplayable(errors.joined(separator: "; ")) }
         EngineLog.write("Akış \(videoId): \(s.label) [\(s.source)]")
+        if !directOnly.contains(videoId) {
+            s.playlist = await DashToHLS.shared.playlist(for: s, key: videoId)
+        }
         // Only the current and the next track's address are kept.
         let keep: Set<String> = [track?.videoId, items.indices.contains(queueIndex + 1) ? items[queueIndex + 1].videoId : nil]
             .compactMap { $0 }.reduce(into: Set<String>()) { $0.insert($1) }
@@ -485,6 +501,9 @@ final class YTMusic {
         let player = ensureAudio()
         resolving = true
         player.pause()
+        let requested = Date()
+        playRequestedAt = requested
+        EngineLog.write("Çalma isteği \(vid)\(startAt > 1 ? " (\(Int(startAt)). sn'den)" : "")")
 
         let (info, trackLinks) = trackInfo(for: e)
         track = info
@@ -501,15 +520,17 @@ final class YTMusic {
             do {
                 let s = try await stream(for: vid)
                 guard token == playToken else { return }
+                EngineLog.write(String(format: "Akış çözüldü %@ (+%.1f sn)", vid, Date().timeIntervalSince(requested)))
                 if info.duration <= 0, s.duration > 0 {
                     track = TrackInfo(videoId: vid, title: info.title, artist: info.artist, album: info.album,
                                       artwork: info.artwork, duration: s.duration.rounded(.down), links: trackLinks)
                 }
                 streamInfo = s.label + (s.source == "signed" ? " · hesabınla" : "")
                 currentSource = s.source
+                currentViaPlaylist = s.playlist != nil
                 resolving = false
                 failuresInARow = 0
-                player.load(url: s.url, headers: s.headers, duration: s.duration, autoplay: true, startAt: startAt)
+                player.load(url: s.playURL, headers: s.headers, duration: s.duration, autoplay: true, startAt: startAt)
                 pushNowPlaying()
                 saveSession()
                 beginListen(e, startAt: startAt)
@@ -561,7 +582,7 @@ final class YTMusic {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 guard track?.videoId == videoId, repeatMode != "ONE",
                       items.indices.contains(queueIndex + 1), items[queueIndex + 1].videoId == next else { return }
-                audio?.prepareNext(url: s.url, headers: s.headers)
+                audio?.prepareNext(url: s.playURL, headers: s.headers)
                 EngineLog.write("Sıradaki hazır: \(next) (ilk \(Int(AudioPlayer.standbySeconds)) sn)")
             }
         }
@@ -614,6 +635,10 @@ final class YTMusic {
     private func audioState(playing: Bool, buffering: Bool) {
         guard !resolving else { return }
         let now = Date()
+        if playing, !buffering, let asked = playRequestedAt {
+            playRequestedAt = nil
+            EngineLog.write(String(format: "Ses başladı %@ (+%.1f sn)", track?.videoId ?? "?", now.timeIntervalSince(asked)))
+        }
         var changed = false
         if isLoading != buffering {
             isLoading = buffering
@@ -646,9 +671,14 @@ final class YTMusic {
 
     private func audioFailed(_ message: String) {
         guard let vid = track?.videoId else { return }
-        EngineLog.write("Çalma hatası \(vid) [\(currentSource)]: \(message)")
+        EngineLog.write("Çalma hatası \(vid) [\(currentSource)\(currentViaPlaylist ? ", liste" : "")]: \(message)")
         streams[vid] = nil
-        if currentSource == "signed" {
+        if currentViaPlaylist, !directOnly.contains(vid) {
+            // The playlist made from the file's index was refused: play the file itself,
+            // from where it was.
+            directOnly.insert(vid)
+            startTrack(queueIndex, startAt: position(at: Date()))
+        } else if currentSource == "signed" {
             // The deciphered stream was refused: use the other route for this track.
             unsignedOnly.insert(vid)
             startTrack(queueIndex)

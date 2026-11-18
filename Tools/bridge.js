@@ -1048,6 +1048,9 @@
           url: f.url || null,
           cipher: f.signatureCipher || f.cipher || null,
           approxDurationMs: f.approxDurationMs || null,
+          // Where the file's header and its index (time → byte table) sit.
+          initRange: f.initRange ? [Number(f.initRange.start), Number(f.initRange.end)] : null,
+          indexRange: f.indexRange ? [Number(f.indexRange.start), Number(f.indexRange.end)] : null,
           drc: !!f.isDrc,
           isDefault: f.audioTrack ? f.audioTrack.audioIsDefault !== false : true,
         })),
