@@ -55,6 +55,9 @@ final class YTMusic {
     @ObservationIgnored private var playerSts: Int?
     /// Videos whose signed stream failed in AVPlayer: use the anonymous route for them.
     @ObservationIgnored private var unsignedOnly: Set<String> = []
+    /// The search field's latest suggestions, by text (in memory; reset with the account).
+    @ObservationIgnored private var suggestionCache: [String: SearchSuggestions] = [:]
+    @ObservationIgnored private var suggestionOrder: [String] = []
     /// Videos whose playlist (`DashToHLS`) failed in AVPlayer: play their file as it is.
     @ObservationIgnored private var directOnly: Set<String> = []
     /// Whether the playing song was given to AVPlayer as such a playlist.
@@ -220,6 +223,8 @@ final class YTMusic {
         // kept from the previous account (or from before signing in) go.
         PageCache.shared.clear()
         musicChannels = [:]
+        suggestionCache = [:]
+        suggestionOrder = []
         sessionID += 1
         await restoreLastSession()
     }
@@ -541,6 +546,11 @@ final class YTMusic {
                 skipUnplayable(error.localizedDescription)
             }
         }
+    }
+
+    /// A song's or video's artists and album as YouTube Music knows them (one request).
+    func lookUpTrack(_ videoId: String) async -> TrackMeta? {
+        try? await call("trackMeta", ["videoId": videoId], as: TrackMeta.self)
     }
 
     private func loadTrackMeta(_ videoId: String) {
@@ -1208,6 +1218,19 @@ final class YTMusic {
     /// Regular YouTube search (`long`: only videos over 20 minutes).
     func youtubeSearch(_ query: String, long: Bool) async throws -> YouTubeFeed {
         try await call("ytSearch", ["query": query, "long": long])
+    }
+
+    /// Suggestions for the search field. The last 20 texts' are kept in memory, so deleting
+    /// back over what was typed asks for nothing again.
+    func searchSuggestions(_ query: String) async throws -> SearchSuggestions {
+        let key = query.lowercased()
+        if let kept = suggestionCache[key] { return kept }
+        let found: SearchSuggestions = try await call("searchSuggestions", ["query": query])
+        suggestionCache[key] = found
+        suggestionOrder.removeAll { $0 == key }
+        suggestionOrder.append(key)
+        while suggestionOrder.count > 20 { suggestionCache[suggestionOrder.removeFirst()] = nil }
+        return found
     }
 
     /// Artists the account is subscribed to.

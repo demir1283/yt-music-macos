@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Search results. The query lives in the centered toolbar field.
 ///
@@ -18,6 +19,10 @@ struct SearchView: View {
     @ViewState var loadingMore = false
     @ViewState var error: String? = nil
     @ViewState var lastQuery = ""
+    /// When the search is an artist's name: that artist's popular songs, shown first under
+    /// "Songs" (YouTube Music ranks by the text, so remixes naming the artist came first).
+    @ViewState var artistSongs: [MediaItem] = []
+    @ViewState var artistName = ""
 
     struct ExpandedShelf: Identifiable {
         let kind: Kind
@@ -27,10 +32,13 @@ struct SearchView: View {
     }
 
     enum Kind: String {
-        case songs, videos, albums, artists, playlists, other
+        case songs, videos, albums, artists, playlists, podcasts, hidden, other
 
         static func of(_ chipTitle: String) -> Kind {
             let t = chipTitle.lowercased(with: Locale(identifier: "tr_TR"))
+            // Community playlists and YouTube profiles aren't offered (as on the home page).
+            if t.contains("topluluk") || t.contains("community") || t.contains("profil") { return .hidden }
+            if t.contains("podcast") || t.contains("bölüm") || t.contains("episode") { return .podcasts }
             if t.contains("şarkı") || t.contains("song") { return .songs }
             if t.contains("video") { return .videos }
             if t.contains("albüm") || t.contains("album") { return .albums }
@@ -46,9 +54,44 @@ struct SearchView: View {
             case .albums: return 2
             case .playlists: return 3
             case .videos: return 4
-            case .other: return 5
+            case .podcasts: return 5
+            case .hidden, .other: return 6
             }
         }
+
+        /// The row's title on the overview.
+        var title: String {
+            switch self {
+            case .songs: return "Şarkılar"
+            case .artists: return "Sanatçılar"
+            case .albums: return "Albümler"
+            case .playlists: return "Çalma listeleri"
+            case .videos: return "Videolar"
+            case .podcasts: return "Podcast'ler"
+            case .hidden, .other: return ""
+            }
+        }
+    }
+
+    /// The filters shown: in a fixed order (songs, artists, albums, playlists, videos,
+    /// podcasts), without community playlists and profiles; "featured playlists" are just
+    /// "playlists".
+    private var chips: [FilterChip] {
+        (results?.chips ?? [])
+            .map { c in (c, Kind.of(c.title)) }
+            .filter { $0.1 != .hidden }
+            .enumerated()
+            .sorted { ($0.element.1.order, $0.offset) < ($1.element.1.order, $1.offset) }
+            .map { _, pair in
+                let (c, kind) = pair
+                return kind == .playlists
+                    ? FilterChip(title: Kind.playlists.title, params: c.params, browseId: c.browseId, selected: c.selected)
+                    : c
+            }
+    }
+
+    private func chip(for kind: Kind) -> FilterChip? {
+        chips.first { Kind.of($0.title) == kind }
     }
 
     private var query: String { app.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -59,6 +102,30 @@ struct SearchView: View {
     private struct Snapshot {
         let results: BrowsePage
         let expanded: [ExpandedShelf]
+        let artistSongs: [MediaItem]
+        let artistName: String
+    }
+
+    /// The artist the search names, if it is exactly an artist's name ("charlotte de witte").
+    private static func namedArtist(_ query: String, _ page: BrowsePage, _ shelves: [ExpandedShelf]) -> MediaItem? {
+        let key = QueueCurator.normalize(query)
+        let candidates = page.sections.compactMap(\.top) + page.sections.flatMap(\.items)
+            + shelves.filter { $0.kind == .artists }.flatMap(\.section.items)
+        return candidates.first { $0.isArtist && $0.browseId != nil && QueueCurator.normalize($0.title) == key }
+    }
+
+    /// Songs with the artist's own first: their popular songs, then the results by them,
+    /// then the rest (remixes and mentions), each song once.
+    private static func artistFirst(_ popular: [MediaItem], _ found: [MediaItem], artist: String) -> [MediaItem] {
+        guard !popular.isEmpty else { return found }
+        let key = QueueCurator.normalize(artist)
+        func byArtist(_ i: MediaItem) -> Bool { i.artists.contains { QueueCurator.normalize($0.name) == key } }
+        var seen = Set<String>()
+        var out: [MediaItem] = []
+        for i in popular + found.filter(byArtist) + found.filter({ !byArtist($0) }) {
+            if seen.insert(i.videoId ?? i.id).inserted { out.append(i) }
+        }
+        return out
     }
 
     var body: some View {
@@ -97,7 +164,7 @@ struct SearchView: View {
 
     @ViewBuilder
     private var resultsView: some View {
-        FilterChips(chips: results?.chips ?? [], selected: chip) { chip = $0 }
+        FilterChips(chips: chips, selected: chip) { chip = $0 }
         if let results {
             if chip == nil {
                 overview(results)
@@ -139,24 +206,38 @@ struct SearchView: View {
         let top = page.sections.first { $0.layout == "top" }
         let songShelf = expanded.first { $0.kind == .songs }?.section
             ?? page.sections.first { $0.layout == "list" && $0.hasTracks }
-        let allSongs = (songShelf?.items ?? top?.items ?? []).filter(\.isTrack)
-        let headSongs = Array(allSongs.prefix(5))
-        let moreSongs = Array(allSongs.dropFirst(5))
+        let ytTop = top?.top
+        // The top result is always an official artist or channel: YouTube Music's own pick
+        // when it is one, else the first artist among the results.
+        let topItem = (ytTop?.isArtist == true ? ytTop : nil)
+            ?? page.sections.lazy.flatMap(\.items).first(where: \.isArtist)
+            ?? expanded.first(where: { $0.kind == .artists })?.section.items.first(where: \.isArtist)
+            ?? ytTop
+        let headSongs = Array((artistSongs.isEmpty ? (songShelf?.items ?? top?.items ?? []) : artistSongs)
+            .filter { $0.isTrack && !Self.same($0, topItem) }
+            .prefix(4))
+        // What's already shown above doesn't come again in the rows below.
+        let shownAbove = Set(headSongs.map(\.id))
+        let shelves = Dictionary(expanded.map { ($0.kind, $0.section.items) }, uniquingKeysWith: { a, _ in a })
+        let artists = Array((shelves[.artists] ?? []).filter { $0.isArtist && !Self.same($0, topItem) }.prefix(2))
+        let albums = (shelves[.albums] ?? []).filter { !Self.same($0, topItem) }
+        let playlists = (shelves[.playlists] ?? []).filter { !Self.same($0, topItem) }
+        let videos = (shelves[.videos] ?? []).filter { !Self.same($0, topItem) && !shownAbove.contains($0.id) }.map(\.asWide)
 
-        if top?.top != nil || !headSongs.isEmpty {
+        if topItem != nil || !headSongs.isEmpty {
             VStack(alignment: .leading, spacing: d.v(8, 10)) {
                 // Titles on one baseline row, content boxes below share top and bottom edges.
                 HStack(alignment: .firstTextBaseline, spacing: d.v(16, 24)) {
-                    if top?.top != nil {
-                        SectionTitle(title: "En İyi Sonuç").frame(width: d.topResult, alignment: .leading)
+                    if topItem != nil {
+                        SectionTitle(title: "En iyi sonuç").frame(width: d.topResult, alignment: .leading)
                     }
                     if !headSongs.isEmpty {
-                        SectionTitle(title: "Şarkılar", action: songsChip.map { c in { chip = c } })
+                        SectionTitle(title: Kind.songs.title, action: chip(for: .songs).map { c in { chip = c } })
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
                 HStack(alignment: .top, spacing: d.v(16, 24)) {
-                    if let item = top?.top {
+                    if let item = topItem {
                         TopResultCard(item: item)
                             .frame(width: d.topResult)
                             .frame(maxHeight: .infinity)
@@ -171,18 +252,11 @@ struct SearchView: View {
             .padding(.horizontal, d.pad)
         }
 
-        if !moreSongs.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                SectionTitle(title: "Diğer Şarkılar", action: songsChip.map { c in { chip = c } })
-                    .padding(.horizontal, d.pad)
-                TrackList(items: moreSongs, numbered: false, showArtwork: true, showAlbum: true)
-                    .padding(.horizontal, d.pad)
-            }
-        }
-
         if expanded.isEmpty {
-            // Per-type searches still loading (or unavailable): show the combined shelves.
-            ForEach(page.sections.filter { $0.id != top?.id && $0.id != songShelf?.id }) { s in
+            // Per-type searches still loading (or unavailable): the combined shelves.
+            ForEach(page.sections.filter { s in
+                s.id != top?.id && s.id != songShelf?.id && Kind.of(s.title) != .hidden
+            }) { s in
                 if s.hasTracks {
                     TrackListSection(section: s, limit: 4)
                 } else {
@@ -190,17 +264,50 @@ struct SearchView: View {
                 }
             }
         } else {
-            ForEach(expanded.filter { $0.kind != .songs }) { e in
-                ExpandedShelfView(shelf: Shelf(id: e.section.id, title: e.title, strapline: nil,
-                                               layout: e.section.layout, items: e.section.items,
-                                               more: nil, continuation: nil, top: nil),
-                                  isVideo: e.kind == .videos)
+            // A search is mostly about one artist, who is the top result: the other artists
+            // (two at most) and the albums share a row, the albums scrolling sideways.
+            if !artists.isEmpty || !albums.isEmpty {
+                HStack(alignment: .top, spacing: 0) {
+                    if !artists.isEmpty {
+                        VStack(alignment: .leading, spacing: d.v(8, 10)) {
+                            SectionTitle(title: Kind.artists.title, action: chip(for: .artists).map { c in { chip = c } })
+                            HStack(alignment: .top, spacing: d.cardGap) {
+                                ForEach(artists) { a in ItemCard(item: a, width: d.card) }
+                            }
+                        }
+                        .padding(.leading, d.pad)
+                        .fixedSize()
+                    }
+                    if !albums.isEmpty {
+                        row(.albums, albums)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+            row(.playlists, playlists)
+            row(.videos, videos)
+        }
+    }
+
+    /// A row of cards with its title; "Show all" switches to that filter.
+    @ViewBuilder
+    private func row(_ kind: Kind, _ items: [MediaItem]) -> some View {
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: d.v(8, 10)) {
+                SectionTitle(title: kind.title, action: chip(for: kind).map { c in { chip = c } })
+                    .padding(.horizontal, d.pad)
+                CardCarousel(section: Shelf(id: "search-\(kind.rawValue)", title: "", strapline: nil, layout: "cards",
+                                            items: items, more: nil, continuation: nil, top: nil))
             }
         }
     }
 
-    private var songsChip: FilterChip? {
-        results?.chips.first { Kind.of($0.title) == .songs }
+    /// Whether two results are the same thing (the top result also comes in its own row).
+    private static func same(_ a: MediaItem, _ b: MediaItem?) -> Bool {
+        guard let b else { return false }
+        if let v = a.videoId, v == b.videoId { return true }
+        if let id = a.browseId, id == b.browseId { return true }
+        return a.id == b.id
     }
 
     // MARK: Loading
@@ -219,11 +326,20 @@ struct SearchView: View {
         if chip == nil, let kept = PageCache.shared.value(cacheKey, as: Snapshot.self) {
             results = kept.results
             expanded = kept.expanded
+            artistSongs = kept.artistSongs
+            artistName = kept.artistName
             chipItems = []
             chipToken = nil
             error = nil
             if PageCache.shared.isFresh(cacheKey) { return }
             refreshing = true
+        } else if chip == nil {
+            // A new search: the loading preview until everything has come, then the whole
+            // page at once (no rows dropping in, no top result changing afterwards).
+            results = nil
+            expanded = []
+            artistSongs = []
+            artistName = ""
         }
         do { try await Task.sleep(nanoseconds: 280_000_000) } catch { return }   // debounce typing
         error = nil
@@ -233,18 +349,12 @@ struct SearchView: View {
             guard !Task.isCancelled else { return }
             if chip != nil {
                 let main = r.sections.first { $0.layout != "top" && !$0.items.isEmpty }
-                chipItems = main?.items ?? []
+                let found = main?.items ?? []
+                chipItems = Kind.of(chip?.title ?? "") == .songs
+                    ? Self.artistFirst(artistSongs, found, artist: artistName) : found
                 chipToken = main?.continuation
                 if results == nil { results = r }
                 return
-            }
-            if refreshing {
-                if let old = results, !old.sameContent(as: r) {
-                    withAnimation(.easeInOut(duration: 0.35)) { results = r }
-                }
-            } else {
-                results = r
-                expanded = []
             }
             chipItems = []
             chipToken = nil
@@ -253,28 +363,51 @@ struct SearchView: View {
             var wanted: [(Kind, FilterChip)] = []
             for c in r.chips where c.params != nil {
                 let k = Kind.of(c.title)
-                if k != .other { wanted.append((k, c)) }
+                if ![.other, .hidden, .podcasts].contains(k) { wanted.append((k, c)) }
             }
-            var collected: [ExpandedShelf] = []
-            for (kind, c) in wanted {
-                guard !Task.isCancelled else { return }
-                if let page = try? await engine.search(q, params: c.params),
-                   let shelf = page.sections.first(where: { $0.layout != "top" && !$0.items.isEmpty }) {
-                    collected.append(ExpandedShelf(kind: kind, title: c.title, section: shelf))
-                    // Show results progressively (songs first).
-                    if kind == .songs && !refreshing { expanded = collected }
+            // An artist named in the search: their popular songs, asked for alongside.
+            let named = Self.namedArtist(q, r, [])
+            let app = self.app
+            let popularTask = named?.browseId.map { id in Task { await app.popularSongs(artistId: id) } }
+            // All at the same time; the page shows once every one has answered.
+            let collected: [ExpandedShelf] = await withTaskGroup(of: ExpandedShelf?.self) { group in
+                for (kind, c) in wanted {
+                    group.addTask {
+                        guard let page = try? await engine.search(q, params: c.params),
+                              let shelf = page.sections.first(where: { $0.layout != "top" && !$0.items.isEmpty })
+                        else { return nil }
+                        return ExpandedShelf(kind: kind, title: c.title, section: shelf)
+                    }
                 }
+                var out: [ExpandedShelf] = []
+                for await e in group { if let e { out.append(e) } }
+                return out
             }
             guard !Task.isCancelled, q == query else { return }
             let all = collected.sorted { $0.kind.order < $1.kind.order }
+            // The artist may only show in the artists' search.
+            let artist = named ?? Self.namedArtist(q, r, all)
+            var popular = await popularTask?.value ?? []
+            if popularTask == nil, let id = artist?.browseId { popular = await app.popularSongs(artistId: id) }
+            guard !Task.isCancelled, q == query else { return }
+            artistSongs = popular
+            artistName = artist?.title ?? ""
             if refreshing {
-                if all.map(\.section.contentKey) != expanded.map(\.section.contentKey) {
-                    withAnimation(.easeInOut(duration: 0.35)) { expanded = all }
+                // Behind a kept page: it changes only if the answer did, all in one go.
+                let changed = !(results?.sameContent(as: r) ?? false)
+                    || all.map(\.section.contentKey) != expanded.map(\.section.contentKey)
+                if changed {
+                    withAnimation(.easeInOut(duration: 0.35)) {
+                        results = r
+                        expanded = all
+                    }
                 }
             } else {
+                results = r
                 expanded = all
             }
-            PageCache.shared.store(Snapshot(results: r, expanded: all), for: cacheKey, lifetime: PageCache.Lifetime.search)
+            PageCache.shared.store(Snapshot(results: r, expanded: all, artistSongs: popular, artistName: artist?.title ?? ""),
+                                   for: cacheKey, lifetime: PageCache.Lifetime.search)
         } catch is CancellationError {
         } catch {
             if !Task.isCancelled { self.error = error.localizedDescription }
@@ -302,57 +435,89 @@ struct SearchView: View {
     }
 }
 
-private struct ExpandedShelfView: View {
-    let shelf: Shelf
-    let isVideo: Bool
-
-    var body: some View {
-        if !isVideo && shelf.hasTracks {
-            TrackListSection(section: shelf, limit: 6)
-        } else {
-            CardCarousel(section: shelf)
-        }
-    }
-}
-
 struct TopResultCard: View {
     let item: MediaItem
     @Environment(AppModel.self) private var app
     @ViewState var hover = false
+    @Environment(\.colorScheme) private var scheme
     @Environment(\.density) private var d
 
     var body: some View {
-        VStack(alignment: .leading, spacing: d.v(10, 14)) {
-            Artwork(url: item.thumbnail, cornerRadius: 8, circle: false,
+        let cover = d.v(92, 112)
+        VStack(alignment: .leading, spacing: d.v(12, 16)) {
+            Artwork(url: item.thumbnail, cornerRadius: 8,
                     placeholder: item.isArtist ? "person.fill" : "music.note")
-                .frame(width: d.v(76, 100), height: d.v(76, 100))
-                .shadow(color: .black.opacity(0.2), radius: 6, y: 3)
-            VStack(alignment: .leading, spacing: 4) {
+                .frame(width: cover, height: cover)
+                .cardShadow(cornerRadius: 8, opacity: 0.2, radius: 6, y: 3)
+            VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
                     Text(item.title)
-                        .font(.system(size: d.v(19, 22), weight: .bold))
+                        .font(.system(size: d.v(22, 26), weight: .bold))
                         .lineLimit(2)
                     if item.explicit { ExplicitBadge() }
                 }
-                Text([item.typeLabel, item.isArtist ? "" : item.bylineText].filter { !$0.isEmpty }.joined(separator: " · "))
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                HStack(spacing: 8) {
+                    // What it is, as a small tag (Spotify's "Artist" / "Song" pill).
+                    Text(item.typeLabel)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .padding(.horizontal, 9)
+                        .frame(height: 22)
+                        .background(Capsule().fill(Color.primary.opacity(0.08)))
+                    if !item.isArtist, !item.bylineText.isEmpty {
+                        Text(item.bylineText)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
             }
         }
         .padding(d.v(14, 18))
         .frame(maxWidth: .infinity, minHeight: d.v(160, 210), maxHeight: .infinity, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(hover ? 0.09 : 0.05)))
+        .background {
+            let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+            ZStack {
+                shape.fill(Color.primary.opacity(hover ? 0.09 : 0.05))
+                // The accent colour chosen in Settings and two neighbours of it: a diagonal
+                // blend and a soft glow in two corners; a little stronger in dark mode.
+                let tones = Self.tones(of: Color.brand)
+                let k: Double = scheme == .dark ? 1.25 : 0.85
+                shape.fill(LinearGradient(colors: [tones.0.opacity(0.30 * k), tones.1.opacity(0.18 * k), tones.2.opacity(0.10 * k)],
+                                          startPoint: .topLeading, endPoint: .bottomTrailing))
+                shape.fill(RadialGradient(colors: [tones.1.opacity(0.24 * k), .clear],
+                                          center: .topTrailing, startRadius: 0, endRadius: 260))
+                shape.fill(RadialGradient(colors: [tones.2.opacity(0.18 * k), .clear],
+                                          center: .bottomLeading, startRadius: 0, endRadius: 220))
+            }
+        }
         .overlay(alignment: .bottomTrailing) {
             if hover {
-                PlayCircle(size: 40) { app.play(item) }
-                    .padding(16)
-                    .transition(.opacity)
+                // An artist: their popular songs.
+                PlayCircle(size: 44) {
+                    if item.isArtist, let id = item.browseId { app.playPopular(artistId: id) } else { app.play(item) }
+                }
+                .help(item.isArtist ? "Popüler şarkılarını çal" : "Çal")
+                .padding(16)
+                .transition(.opacity)
             }
         }
         .contentShape(Rectangle())
         .onHover { h in withAnimation(.easeOut(duration: 0.15)) { hover = h } }
         .onTapGesture { app.open(item) }
         .contextMenu { ItemMenu(item: item) }
+    }
+}
+
+private extension TopResultCard {
+    /// A colour and two neighbours of it: the hue turned a little each way, one lighter,
+    /// one deeper.
+    static func tones(of color: Color) -> (Color, Color, Color) {
+        guard let c = NSColor(color).usingColorSpace(.deviceRGB) else { return (color, color, color) }
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        c.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        func turned(_ by: CGFloat) -> CGFloat { (h + by + 1).truncatingRemainder(dividingBy: 1) }
+        return (color,
+                Color(hue: turned(0.07), saturation: min(1, s * 1.05), brightness: min(1, b * 1.15)),
+                Color(hue: turned(-0.07), saturation: s * 0.9, brightness: b * 0.8))
     }
 }

@@ -81,7 +81,7 @@ struct ShortcutTile: View {
         let side = d.v(48, 56)
         let playing = isCurrent && app.engine.isPlaying
         HStack(spacing: 10) {
-            Artwork(url: item.thumbnail, cornerRadius: 0, circle: item.isArtist,
+            Artwork(url: item.thumbnail, cornerRadius: 0,
                     placeholder: item.isArtist ? "person.fill" : "music.note")
                 .frame(width: side, height: side)
             Text(item.title)
@@ -287,9 +287,12 @@ private struct StationCard: View {
         VStack(alignment: .leading, spacing: 8) {
             ZStack {
                 HomePalette.color(for: item.title)
-                Artwork(url: item.thumbnail, circle: true, placeholder: "person.fill")
-                    .frame(width: side * 0.56, height: side * 0.56)
-                    .offset(y: -side * 0.05)
+                // The artist's own photo, or none (just the name below).
+                if item.thumbnail != nil {
+                    Artwork(url: item.thumbnail, cornerRadius: 8, placeholder: "person.fill")
+                        .frame(width: side * 0.56, height: side * 0.56)
+                        .offset(y: -side * 0.05)
+                }
                 Text("RADYO")
                     .font(.system(size: 10, weight: .heavy))
                     .foregroundStyle(.black.opacity(0.75))
@@ -320,7 +323,7 @@ private struct StationCard: View {
         }
         .contentShape(Rectangle())
         .scrollAwareHover($hover, animation: .easeOut(duration: 0.15))
-        .onTapGesture { app.play(item) }
+        .onTapGesture { app.open(item) }
         .contextMenu { ItemMenu(item: item) }
     }
 }
@@ -336,8 +339,8 @@ struct SimilarRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: d.v(8, 10)) {
             HStack(spacing: 12) {
-                if let artist = section.top {
-                    Artwork(url: artist.thumbnail, circle: true, placeholder: "person.fill")
+                if let artist = section.top, artist.thumbnail != nil {
+                    Artwork(url: artist.thumbnail, cornerRadius: 6, placeholder: "person.fill")
                         .frame(width: d.v(40, 48), height: d.v(40, 48))
                         .onTapGesture { app.open(artist) }
                 }
@@ -393,10 +396,10 @@ private struct SpotlightCard: View {
             LinearGradient(colors: [.clear, .black.opacity(0.55)], startPoint: .center, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top, spacing: 16) {
-                    Artwork(url: item.thumbnail, cornerRadius: 6, circle: item.kind == "artistradio",
+                    Artwork(url: item.thumbnail, cornerRadius: 6,
                             placeholder: item.kind == "artistradio" ? "person.fill" : "music.note")
                         .frame(width: cover, height: cover)
-                        .cardShadow(cornerRadius: 6, circle: item.kind == "artistradio", opacity: 0.4, radius: 10, y: 4)
+                        .cardShadow(cornerRadius: 6, opacity: 0.4, radius: 10, y: 4)
                     VStack(alignment: .leading, spacing: 6) {
                         Text(item.title)
                             .font(.system(size: d.v(24, 30), weight: .heavy))

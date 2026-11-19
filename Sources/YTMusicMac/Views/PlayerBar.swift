@@ -6,24 +6,36 @@ struct PlayerBar: View {
     @ViewState var hover = false
     /// Where the edge line is being dragged to (seconds); the time readout follows it.
     @ViewState var scrub: Double? = nil
+    /// Width the right-hand controls actually take (measured): the side columns are at
+    /// least this wide, so no button ever spills over the now-playing block.
+    @ViewState var trailingWidth: CGFloat = 0
     @Environment(\.density) private var d
 
     var body: some View {
         GeometryReader { geo in
+            // Three widths: below 820 pt the short set of controls; up to 960 pt all of
+            // them with a shorter volume slider (they then fit the 240 pt columns); above,
+            // the long slider. The now-playing block keeps ~300 pt or more throughout.
             let compact = geo.size.width < 820
+            let slider: CGFloat = geo.size.width < 960 ? 48 : 80
             // Layout rule: the controls sit in two equally wide side columns, so the
             // now-playing block between them is always exactly centred in the bar. Inside
             // the block the cover is as tall as the text column and the times sit at its
             // right end; the song's progress runs along the bottom edge of the capsule.
-            let side: CGFloat = compact ? 110 : 240
+            let side: CGFloat = max(compact ? 110 : 240, trailingWidth)
             HStack(spacing: 12) {
                 TransportControls(compact: compact)
                     .frame(width: side, alignment: .leading)
                 NowPlayingCenter(artSide: d.playerBar - 14, scrub: scrub)
                     .frame(maxWidth: .infinity)
-                TrailingControls(compact: compact)
+                TrailingControls(compact: compact, slider: slider)
+                    .fixedSize()
+                    .background(GeometryReader { g in
+                        Color.clear.preference(key: TrailingWidthKey.self, value: g.size.width)
+                    })
                     .frame(width: side, alignment: .trailing)
             }
+            .onPreferenceChange(TrailingWidthKey.self) { trailingWidth = $0 }
             .padding(.horizontal, 16)
             .frame(width: geo.size.width, height: d.playerBar)
             // On hover the bar grows a touch in every direction and turns less transparent.
@@ -42,6 +54,11 @@ struct PlayerBar: View {
         }
         .frame(height: d.playerBar)
     }
+}
+
+private struct TrailingWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
 private struct TransportControls: View {
@@ -251,6 +268,8 @@ struct ThinSlider: View {
 
 private struct TrailingControls: View {
     let compact: Bool
+    /// Width of the volume slider.
+    var slider: CGFloat = 80
     @Environment(AppModel.self) private var app
 
     var body: some View {
@@ -278,7 +297,7 @@ private struct TrailingControls: View {
                 ThinSlider(value: e.muted ? 0 : e.volume / 100,
                            onChanged: { e.setVolume(($0 * 100).rounded()) },
                            onEnded: { e.setVolume(($0 * 100).rounded()) })
-                    .frame(width: 80)
+                    .frame(width: slider)
             }
             OutputButton()
             let hasLyrics = LyricsCenter.shared.available(for: e.track?.videoId)

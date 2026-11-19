@@ -170,15 +170,39 @@ final class AppModel {
         if !path.isEmpty { path.removeLast() }
     }
 
+    /// What a click on a cover does, everywhere in the app: it opens the item's page — an
+    /// artist's, an album's, a playlist's; a song opens its album, an artist's radio the
+    /// artist. A song or video without a known album is looked up on YouTube Music: its
+    /// album, else its artist's or channel's page. Only mixes (no page at all) play.
+    /// Playing is the play button's job.
     func open(_ item: MediaItem) {
+        if item.kind == "artistradio", let id = item.browseId, id.hasPrefix("UC") {
+            openArtist(id)
+            return
+        }
         // Mixes (the app's artist mixes, YouTube Mixes) have no page: they start playing.
         if item.kind == "mix" || item.kind == "artistradio" {
             play(item)
             return
         }
-        // Songs, videos and episodes always play — some carry a channel/browse id too,
-        // which used to open an empty page instead.
-        if item.isTrack && ["song", "video", "episode", "unknown"].contains(item.kind) {
+        // Songs and videos: their album. (Some carry a channel/browse id too, which would
+        // open an empty page.)
+        if item.isTrack && ["song", "video", "unknown"].contains(item.kind), let vid = item.videoId {
+            if let album = item.album?.id {
+                openAlbum(album)
+                return
+            }
+            Task {
+                let meta = await engine.lookUpTrack(vid)
+                if let album = meta?.album?.id {
+                    openAlbum(album)
+                } else if let artist = (item.artists + (meta?.artists ?? [])).first(where: { $0.id.hasPrefix("UC") }) {
+                    openArtist(artist.id)
+                } else {
+                    play(item)
+                }
+            }
+        } else if item.isTrack && item.kind == "episode" {
             play(item)
         } else if let id = item.browseId, id.hasPrefix("MPED") {
             // Episode page: nothing to show there, play the episode itself.
@@ -270,6 +294,37 @@ final class AppModel {
                 }
             }
         }
+    }
+
+    /// An artist's popular songs, from the top: the full list behind "Popular songs" on the
+    /// artist page (a playlist), or that list's first song, or the page's own play button.
+    func playPopular(artistId: String) {
+        Task {
+            guard let artist = try? await self.page(for: BrowseTarget(browseId: artistId, params: nil, kind: "artist", title: nil))
+            else { return }
+            let songs = artist.sections.first { $0.layout == "list" && $0.hasTracks }
+            if let list = songs?.more?.browseId, list.hasPrefix("VL") {
+                engine.play(endpoint: watchPlaylistEndpoint(String(list.dropFirst(2))), context: nil)
+            } else if let first = songs?.items.first(where: { $0.isTrack }) {
+                play(first)
+            } else if let ep = artist.header?.play ?? artist.header?.shuffle {
+                engine.play(endpoint: ep, context: nil)
+            }
+        }
+    }
+
+    /// An artist's popular songs: the full list behind "Popular songs" on their page, or
+    /// the few the page shows. Pages come from memory when recently opened.
+    func popularSongs(artistId: String) async -> [MediaItem] {
+        guard let artist = try? await page(for: BrowseTarget(browseId: artistId, params: nil, kind: "artist", title: nil))
+        else { return [] }
+        let songs = artist.sections.first { $0.layout == "list" && $0.hasTracks }
+        if let list = songs?.more?.browseId, list.hasPrefix("VL"),
+           let full = try? await page(for: BrowseTarget(browseId: list, params: nil, kind: "playlist", title: nil)) {
+            let tracks = full.sections.flatMap(\.items).filter(\.isTrack)
+            if !tracks.isEmpty { return tracks }
+        }
+        return songs?.items.filter(\.isTrack) ?? []
     }
 
     func shuffle(_ item: MediaItem) {

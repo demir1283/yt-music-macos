@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct MainWindow: View {
     @Environment(AppModel.self) private var app
@@ -99,19 +100,28 @@ struct ToolbarSearchField: View {
     @Environment(AppModel.self) private var app
     @FocusState private var focused: Bool
     @ViewState var hover = false
+    /// Whether the field is being typed in, read from AppKit (`focused` doesn't follow a
+    /// text field in the toolbar).
+    @ViewState var editing = false
+
+    private var active: Bool { focused || editing }
 
     var body: some View {
         @Bindable var app = app
         HStack(spacing: 7) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 12.5, weight: .semibold))
-                .foregroundStyle(focused ? Color.brand : Color.secondary)
-            TextField("Şarkı, sanatçı, albüm, podcast ara", text: $app.searchQuery)
+                .foregroundStyle(active ? Color.brand : Color.secondary)
+            TextField(SearchField.placeholder, text: $app.searchQuery)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .lineLimit(1)
                 .focused($focused)
-                .onSubmit { if app.section != .search { app.select(.search) } }
+                .onSubmit {
+                    SearchSuggestionModel.shared.dismiss()
+                    SearchField.endEditing()
+                    if app.section != .search { app.select(.search) }
+                }
                 .onExitCommand { focused = false }   // Esc: stop typing, space plays again
             if !app.searchQuery.isEmpty {
                 Button {
@@ -128,12 +138,7 @@ struct ToolbarSearchField: View {
         .padding(.horizontal, 12)
         .frame(minWidth: 260, idealWidth: 420, maxWidth: 460)
         .frame(height: 30)
-        .background(
-            Capsule().fill(Color.primary.opacity(focused ? 0.09 : (hover ? 0.07 : 0.045)))
-        )
-        .overlay(
-            Capsule().strokeBorder(focused ? Color.brand.opacity(0.6) : Color.primary.opacity(0.08), lineWidth: focused ? 1.2 : 0.5)
-        )
+        .searchCapsule(active: active, hover: hover)
         .contentShape(Capsule())
         .onHover { hover = $0 }
         .onTapGesture { focused = true }
@@ -146,8 +151,56 @@ struct ToolbarSearchField: View {
             if !q.trimmingCharacters(in: .whitespaces).isEmpty && app.section != .search {
                 app.select(.search)
             }
+            SearchSuggestionModel.shared.update(q, engine: app.engine)
         }
         .onChange(of: app.searchFocusToken) { _, _ in focused = true }
+        .onChange(of: focused) { _, _ in showSuggestions() }
+        .onAppear {
+            // Clicking back into the field opens its suggestions again.
+            SuggestionPanel.shared.watchClicks {
+                editing = true
+                SearchSuggestionModel.shared.reopen(app.searchQuery, engine: app.engine)
+                showSuggestions()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSControl.textDidBeginEditingNotification)) { note in
+            guard SearchField.isSearchField(note.object) else { return }
+            editing = true
+            showSuggestions()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSControl.textDidEndEditingNotification)) { note in
+            guard SearchField.isSearchField(note.object) else { return }
+            editing = false
+            showSuggestions()
+        }
+        .onChange(of: SearchSuggestionModel.shared.layoutKey) { _, _ in showSuggestions() }
+    }
+
+    /// Opens the suggestion list under the field while you type in it, closes it otherwise.
+    private func showSuggestions() {
+        let model = SearchSuggestionModel.shared
+        if active, !model.dismissed, !model.rows.isEmpty,
+           !app.searchQuery.trimmingCharacters(in: .whitespaces).isEmpty {
+            SuggestionPanel.shared.show(height: model.height, app: app)
+        } else {
+            SuggestionPanel.shared.hide()
+        }
+    }
+}
+
+private extension View {
+    /// The search field's own capsule. On macOS 26 the toolbar already sets the item on a
+    /// glass capsule, so a second one would show around it: there the glass is the field.
+    @ViewBuilder
+    func searchCapsule(active: Bool, hover: Bool) -> some View {
+        if #available(macOS 26.0, *) {
+            self
+        } else {
+            self
+                .background(Capsule().fill(Color.primary.opacity(active ? 0.09 : (hover ? 0.07 : 0.045))))
+                .overlay(Capsule().strokeBorder(active ? Color.brand.opacity(0.6) : Color.primary.opacity(0.08),
+                                                lineWidth: active ? 1.2 : 0.5))
+        }
     }
 }
 
@@ -166,6 +219,8 @@ struct RootPage: View {
                 LibraryView()
             case .liked, .playlist:
                 if let t = item.browseTarget { CollectionView(target: t) }
+            case .newReleases:
+                NewReleasesView()
             default:
                 if let t = item.browseTarget { BrowsePageView(target: t) }
             }

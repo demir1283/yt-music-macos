@@ -193,10 +193,11 @@ struct ItemCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ZStack(alignment: .bottomLeading) {
-                Artwork(url: item.thumbnail, cornerRadius: 8, circle: false,
+                Artwork(url: item.thumbnail, cornerRadius: 8,
                         placeholder: item.isArtist ? "person.fill" : "music.note")
                     .frame(width: width, height: imageHeight ?? (item.wide ? width * 9 / 16 : width))
-                    .cardShadow(cornerRadius: 8, opacity: hover ? 0.25 : 0.12, radius: hover ? 10 : 4, y: 3)
+                    .cardShadow(cornerRadius: 8, opacity: hover ? 0.25 : 0.12,
+                                radius: hover ? 10 : 4, y: 3)
                 if item.kind == "mix" {
                     MixBand(title: item.title, width: width)
                 }
@@ -235,10 +236,23 @@ struct ItemCard: View {
                         if item.explicit { ExplicitBadge() }
                     }
                     if !item.isArtist {
-                        Text(item.subtitle)
-                            .font(.system(size: d.v(11, 12)))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                        // A subtitle starting with the artists' names ("Tiësto • Single • 2025",
+                        // a video's channels "A ve B • 3:45"): each name links to its page.
+                        if let byline = Self.byline(item) {
+                            HStack(spacing: 0) {
+                                ArtistByline(artists: item.artists, fallback: byline.names, font: .system(size: d.v(11, 12)))
+                                    .layoutPriority(1)
+                                Text(byline.rest)
+                                    .font(.system(size: d.v(11, 12)))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        } else {
+                            Text(item.subtitle)
+                                .font(.system(size: d.v(11, 12)))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: item.isArtist ? .center : .leading)
@@ -695,5 +709,16 @@ struct CardGrid: View {
             }
         }
         .padding(.horizontal, d.pad)
+    }
+}
+
+extension ItemCard {
+    /// The subtitle's first part when it is the item's artists (all of them, with pages),
+    /// and what follows it ("• Single • 2025"); nil otherwise.
+    static func byline(_ item: MediaItem) -> (names: String, rest: String)? {
+        guard !item.artists.isEmpty, item.artists.allSatisfy({ $0.id.hasPrefix("UC") }) else { return nil }
+        let names = item.subtitle.components(separatedBy: " • ").first ?? ""
+        guard !names.isEmpty, item.artists.allSatisfy({ names.localizedCaseInsensitiveContains($0.name) }) else { return nil }
+        return (names, String(item.subtitle.dropFirst(names.count)))
     }
 }

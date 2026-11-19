@@ -18,9 +18,8 @@ import Foundation
 ///  8. Kaldığın yerden devam et: long recordings started but not finished.
 ///  9. YouTube Music'ten popüler listeler: editorial playlists, local and worldwide in turn.
 /// 10. A second "benzer diğer müzikler" row.
-/// 11. Yeni çıkanlar: what the artists you follow put out in the last month (found through
-///     YouTube's subscriptions feed, shown as the single or album on YouTube Music), with
-///     a new release that's popular here or worldwide every few items.
+/// 11. Yeni çıkanlar: the latest 20 releases of the artists you follow, the same list as on
+///     the "Yeni Çıkanlar" page (NewReleases.followed).
 /// 12. Uzun setler: sets in the kinds of music you listen to most (found from the titles of
 ///     your playlists and of the sets you played), and sets of your artists.
 /// 13. Favori sanatçıların: the artists you follow.
@@ -46,7 +45,6 @@ enum PersonalHome {
         async let feedTask = try? engine.youtubeHome()
         async let releasesTask = try? engine.browse("FEmusic_new_releases", params: nil)
         async let chartsTask = try? engine.globalCharts()
-        async let worldReleasesTask = try? engine.browse("FEmusic_new_releases", params: nil, region: "US")
         async let subsTask = try? engine.subscribedArtists()
         async let uploadsTask = try? engine.youtubeSubscriptions()
         async let notesTask = Self.loadNotifications(engine)
@@ -69,7 +67,9 @@ enum PersonalHome {
         func artistItem(_ a: ListeningProfile.HeardArtist) -> MediaItem? {
             if let s = byKey[ListeningProfile.key(a.name)] { return s }
             guard let id = a.id, id.hasPrefix("UC") else { return nil }
-            return MediaItem(uid: "artist-\(id)", kind: "artist", title: a.name, subtitle: "", thumbnail: a.cover,
+            // No picture from the history: what it has is the cover of a song or video played,
+            // not the artist's photo (that comes from the artist's page, below).
+            return MediaItem(uid: "artist-\(id)", kind: "artist", title: a.name, subtitle: "", thumbnail: nil,
                              videoId: nil, browseId: id, params: nil, playlistId: nil, artists: [], album: nil,
                              duration: nil, explicit: false, play: nil, wide: false, color: nil)
         }
@@ -78,21 +78,16 @@ enum PersonalHome {
         let topArtists = Self.unique(profile.topListened(limit: 15).compactMap(artistItem) + followed, limit: 15)
         let hybrid = Self.unique(Self.interleave(topArtists, recentArtists), limit: 30).filter { wanted($0) && $0.browseId != nil }
 
-        // What the artists you follow uploaded in the last month (songs and clips, not sets or
-        // Shorts), newest first, from YouTube's subscriptions feed.
+        // YouTube's subscriptions feed (the notifications row, and the new releases below).
         let uploads = await uploadsTask
-        let followedById = Dictionary(followed.compactMap { a in a.browseId.map { ($0, a) } }, uniquingKeysWith: { a, _ in a })
-        let followedByKey = Dictionary(followed.map { (ListeningProfile.key($0.title), $0) }, uniquingKeysWith: { a, _ in a })
-        let monthUploads: [(MediaItem, YouTubeVideo)] = (uploads?.items ?? []).compactMap { v -> (MediaItem, YouTubeVideo)? in
-            guard !v.mix, let age = v.ageDays, age <= 31, v.seconds >= 60, v.seconds < QueueCurator.setSeconds else { return nil }
-            let match = v.channelId.flatMap { followedById[$0] } ?? followedByKey[ListeningProfile.key(v.channel)]
-            return match.map { ($0, v) }
-        }
-        let releaseArtists = Self.unique(monthUploads.map { $0.0 }, limit: 12)
+        // "Yeni çıkanlar": the latest releases of the artists you follow, the very list the
+        // "Yeni Çıkanlar" page shows first (NewReleases.followed, shared for 15 minutes).
+        async let followedNewTask = NewReleases.followed(engine, subs: subs, uploads: uploads?.items ?? [],
+                                                         profile: profile, wanted: wanted)
 
         // Artist pages: banners, fans also like and releases for the cards and "benzer" rows
-        // (first six of the hybrid), this year's releases of the followed artists above.
-        let pageIds = Array(Set(hybrid.prefix(6).compactMap(\.browseId) + releaseArtists.compactMap(\.browseId)))
+        // (first six of the hybrid).
+        let pageIds = Array(Set(hybrid.prefix(6).compactMap(\.browseId)))
         async let artistPagesTask = Self.pages(engine, pageIds.map { ($0, String?.none) })
         // Songs of three of your saved playlists, picked at random.
         let saved = engine.library.playlists.filter { wanted($0) && $0.browseId != nil }.shuffled().prefix(3)
@@ -113,7 +108,6 @@ enum PersonalHome {
         let feed = await feedTask
         let releasesPage = await releasesTask
         let charts = await chartsTask
-        let worldReleasesPage = await worldReleasesTask
 
         // YouTube Music's rows, cleaned up.
         var ytRows: [Shelf] = music.sections.compactMap { s -> Shelf? in
@@ -178,8 +172,6 @@ enum PersonalHome {
             return all.filter { $0.kind == "song" } + all.filter { $0.kind != "song" && $0.isTrack }
         }
         let trendSongs = trendingSongs(charts)
-        let worldReleases = (worldReleasesPage?.sections ?? []).flatMap(\.items)
-            .filter { $0.kind == "album" && wanted($0) && !Self.isOld($0) }
 
         // Mixes around the artists of your quick picks, one per artist.
         var mixTitles = Set(topMixes.map(\.title))
@@ -197,20 +189,17 @@ enum PersonalHome {
 
         let fetched = await artistPagesTask
         let pageById = Dictionary(zip(pageIds, fetched), uniquingKeysWith: { a, _ in a })
-        let artistPages = hybrid.prefix(6).map { a in a.browseId.flatMap { pageById[$0] } ?? BrowsePage(header: nil, chips: [], sections: [], continuation: nil) }
-        // Each upload as the single or album it belongs to (matched by title among the
-        // artist's releases of this year), newest upload first.
-        var monthReleases: [MediaItem] = []
-        for (artist, video) in monthUploads {
-            guard let id = artist.browseId, let p = pageById[id] else { continue }
-            let releases = Self.similarParts(p.sections, wanted).releases.filter { Self.isRecent($0) }
-            if let r = releases.first(where: { Self.sameTitle($0.title, video.item.title) }) { monthReleases.append(r) }
+        // Artists known only from the history get their page's photo when it was loaded;
+        // otherwise they show their name alone.
+        let artists = hybrid.map { a -> MediaItem in
+            guard a.thumbnail == nil, let id = a.browseId, let photo = pageById[id]?.header?.thumbnail else { return a }
+            var withPhoto = a
+            withPhoto.thumbnail = photo
+            return withPhoto
         }
-        monthReleases = Self.unique(monthReleases, limit: 30)
-        // Already among the notifications (as the video): not again under "Yeni çıkanlar".
-        monthReleases.removeAll { r in noteItems.contains { Self.sameTitle(r.title, $0.title) } }
+        let artistPages = artists.prefix(6).map { a in a.browseId.flatMap { pageById[$0] } ?? BrowsePage(header: nil, chips: [], sections: [], continuation: nil) }
         let savedSongs = (await savedTask).flatMap { $0.sections.flatMap(\.items) }.filter { $0.isTrack && wanted($0) }
-        let stations = hybrid.map { Self.station($0) }
+        let stations = artists.map { Self.station($0) }
 
         // Long sets: in the kinds of music you listen to most, or naming your artists.
         let setSources = await setsTask
@@ -261,7 +250,7 @@ enum PersonalHome {
         // 5.
         if let s = shelf("compiled", "\(Self.ownerName(engine)) için derlendi", nil, ytMixes + seedMixes, limit: 24) { page.append(s) }
         // 6.
-        if let first = hybrid.first, let p = artistPages.first,
+        if let first = artists.first, let p = artistPages.first,
            let s = Self.similarShelf(first, p.sections, wanted, shelf) { page.append(s) }
         // 7.
         if let s = shelf("topmixes", "En çok dinlediğin mix'ler", nil, topMixes, limit: 12) { page.append(s) }
@@ -271,28 +260,19 @@ enum PersonalHome {
         // 9.
         if let s = shelf("editorial", "YouTube Music'ten popüler listeler", nil, editorial, limit: 30) { page.append(s) }
         // 10.
-        if hybrid.count > 1, artistPages.count > 1,
-           let s = Self.similarShelf(hybrid[1], artistPages[1].sections, wanted, shelf) { page.append(s) }
+        if artists.count > 1, artistPages.count > 1,
+           let s = Self.similarShelf(artists[1], artistPages[1].sections, wanted, shelf) { page.append(s) }
         // 11.–13.
-        // A popular new release (here or worldwide) after every four of yours, at least two,
-        // and enough of them for a full row when your artists were quiet.
-        let popularNew = Self.unique(Self.interleave(releases, worldReleases), limit: 40)
-            .filter { !used.contains($0.recommendationKey) }
-        var newRow: [MediaItem] = []
-        var extra = 0
-        for (i, r) in monthReleases.enumerated() {
-            newRow.append(r)
-            if (i + 1) % 4 == 0, extra < popularNew.count { newRow.append(popularNew[extra]); extra += 1 }
+        // Shown exactly as on the "Yeni Çıkanlar" page (not thinned against the other rows).
+        let followedNew = await followedNewTask
+        if !followedNew.isEmpty {
+            page.append(Shelf(id: "home-releases", title: "Yeni çıkanlar", strapline: nil, layout: "cards",
+                              items: followedNew, more: nil, continuation: nil, top: nil))
         }
-        while extra < popularNew.count, extra < 2 || newRow.count < 8 {
-            newRow.append(popularNew[extra])
-            extra += 1
-        }
-        if let s = shelf("releases", "Yeni çıkanlar", nil, newRow, limit: 30) { page.append(s) }
         if let s = shelf("sets", "Uzun setler", nil, sets, limit: 30) { page.append(s) }
         if let s = shelf("artists", "Favori sanatçıların", nil, followed, limit: 30) { page.append(s) }
         // 14. Living cards.
-        if let s = Self.spotlight(Array(hybrid.prefix(6)), artistPages, wanted) { page.append(s) }
+        if let s = Self.spotlight(Array(artists.prefix(6)), artistPages, wanted) { page.append(s) }
         // 15.
         if let s = shelf("again", "Tekrar dinle", nil,
                          profile.favourites(limit: 40).shuffled().map { Self.item($0) }.filter(wanted),
@@ -322,7 +302,7 @@ enum PersonalHome {
     }
 
     /// From an artist page: similar artists, playlists it's on, its albums and singles.
-    private static func similarParts(_ sections: [Shelf], _ wanted: (MediaItem) -> Bool)
+    static func similarParts(_ sections: [Shelf], _ wanted: (MediaItem) -> Bool)
         -> (artists: [MediaItem], playlists: [MediaItem], releases: [MediaItem]) {
         let items = sections.flatMap(\.items).filter(wanted)
         return (items.filter(\.isArtist), items.filter { $0.kind == "playlist" }, items.filter { $0.kind == "album" })
@@ -426,8 +406,9 @@ enum PersonalHome {
             var item = MediaItem(uid: "note-\(v)", kind: "video", title: u.item.title,
                                  subtitle: [u.channel, Self.uploadAge(u.ageDays)].filter { !$0.isEmpty }.joined(separator: " • "),
                                  thumbnail: u.item.thumbnail, videoId: v, browseId: nil, params: nil, playlistId: nil,
-                                 artists: [], album: nil, duration: u.item.duration, explicit: false, play: u.item.play,
-                                 wide: true, color: nil)
+                                 artists: u.item.artists.isEmpty ? [ArtistRef(name: u.channel, id: c)] : u.item.artists,
+                                 album: nil, duration: u.item.duration,
+                                 explicit: false, play: u.item.play, wide: true, color: nil)
             item.avatar = u.avatar
             item.unread = unread.contains(v) ? true : nil
             return item
@@ -466,7 +447,7 @@ enum PersonalHome {
         }
     }
 
-    private static func pages(_ engine: YTMusic, _ targets: [(String, String?)]) async -> [BrowsePage] {
+    static func pages(_ engine: YTMusic, _ targets: [(String, String?)]) async -> [BrowsePage] {
         let empty = BrowsePage(header: nil, chips: [], sections: [], continuation: nil)
         return await withTaskGroup(of: (Int, BrowsePage).self) { group in
             for (i, t) in targets.enumerated() where !t.0.isEmpty {
@@ -593,7 +574,7 @@ enum PersonalHome {
 
     // MARK: - Mixing
 
-    private static func interleave(_ a: [MediaItem], _ b: [MediaItem]) -> [MediaItem] {
+    static func interleave(_ a: [MediaItem], _ b: [MediaItem]) -> [MediaItem] {
         var out: [MediaItem] = []
         for i in 0..<max(a.count, b.count) {
             if i < a.count { out.append(a[i]) }
@@ -603,7 +584,7 @@ enum PersonalHome {
     }
 
     /// Each item once, in order.
-    private static func unique(_ items: [MediaItem], limit: Int) -> [MediaItem] {
+    static func unique(_ items: [MediaItem], limit: Int) -> [MediaItem] {
         var keys = Set<String>()
         var out: [MediaItem] = []
         for it in items where out.count < limit {
@@ -690,7 +671,7 @@ enum PersonalHome {
     }
 
     /// How much a release is "yours": artists you listen to, and artists you follow.
-    private static func releaseScore(_ item: MediaItem, _ profile: ListeningProfile, _ followed: [MediaItem]) -> Double {
+    static func releaseScore(_ item: MediaItem, _ profile: ListeningProfile, _ followed: [MediaItem]) -> Double {
         var names = item.artists.map(\.name)
         if names.isEmpty {
             names = item.subtitle.components(separatedBy: " • ").first?

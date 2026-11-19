@@ -16,18 +16,18 @@ struct MediaItem: Codable, Identifiable, Hashable {
     let uid: String
     let kind: String          // song, video, episode, album, playlist, artist, podcast, category, unknown
     let title: String
-    let subtitle: String
-    let thumbnail: String?
+    var subtitle: String
+    var thumbnail: String?
     let videoId: String?
     let browseId: String?
     let params: String?
     let playlistId: String?
-    let artists: [ArtistRef]
+    var artists: [ArtistRef]
     let album: AlbumRef?
     let duration: String?
     let explicit: Bool
     let play: String?         // raw YouTube Music endpoint JSON used to start playback
-    let wide: Bool
+    var wide: Bool
     let color: String?
     /// Entry id inside a playlist (needed to remove or move it).
     var setVideoId: String? = nil
@@ -40,6 +40,25 @@ struct MediaItem: Codable, Identifiable, Hashable {
 
     var id: String { uid }
     var isTrack: Bool { videoId != nil }
+    /// The item with the artist's name in front of its subtitle ("Tiësto • Single • 2025"),
+    /// for a release taken from the artist's own page, where the name isn't written.
+    /// `id`: the artist's page, so the name links to it.
+    func by(_ artist: String, id: String? = nil) -> MediaItem {
+        guard !artist.isEmpty else { return self }
+        var copy = self
+        if let id, artists.isEmpty { copy.artists = [ArtistRef(name: artist, id: id)] }
+        if !subtitle.localizedCaseInsensitiveContains(artist) {
+            copy.subtitle = subtitle.isEmpty ? artist : "\(artist) • \(subtitle)"
+        }
+        return copy
+    }
+
+    /// The same item as a 16:9 card (a video).
+    var asWide: MediaItem {
+        var copy = self
+        copy.wide = true
+        return copy
+    }
     var isArtist: Bool { kind == "artist" }
 
     var typeLabel: String {
@@ -317,6 +336,18 @@ struct BootInfo: Codable {
 }
 
 /// Audio streams of one video, as YouTube Music's web player receives them.
+/// As-you-type suggestions for the search field.
+struct SearchSuggestions: Codable {
+    struct Suggestion: Codable, Hashable {
+        let text: String
+        /// "history" (your recent searches), "music" (YouTube Music) or "youtube".
+        let source: String
+    }
+    let suggestions: [Suggestion]
+    /// Artists, songs, albums… YouTube Music offers for the text, with covers.
+    let items: [MediaItem]
+}
+
 struct PlayerData: Codable {
     struct Format: Codable {
         let itag: Int

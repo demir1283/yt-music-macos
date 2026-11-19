@@ -1,5 +1,38 @@
 # Changelog
 
+## 2.5.0 — 2026-11-19
+
+A new search, a new "New releases" page, and one rule for what a click does.
+
+### Search suggestions
+- Suggestions appear under the search field as you type, from YouTube Music and YouTube, with your recent searches first and covers for songs, artists and albums.
+- Hover a song for a play button; an artist's play button plays their popular songs. Clicking a song opens its album.
+- ↑↓ picks a suggestion, ↩ searches and leaves the field, Esc closes the list. Clicking back into the field shows the list again.
+- On macOS 26 the field uses the system's own glass capsule (no double bar).
+
+### Search page
+- Filters: All, Songs, Artists, Albums, Playlists, Videos, Podcasts. Community playlists and profiles are left out.
+- "All": a top result card (always an official artist when there is one) with four songs beside it, then artists and albums in one row, playlists, and videos in their wide format.
+- The top result card is tinted in a few soft tones of your accent colour, for light and dark mode.
+- All sections are fetched together and shown at once, with a loading preview until then: results no longer reshuffle after appearing.
+- When the search is an artist's name, "Songs" lists that artist's popular songs first.
+
+### New releases
+- The sidebar page is rebuilt in five rows: from the artists you follow (their last 20 releases), from the artists you listen to, new for you, new on YouTube Music, and new music videos. Every card names its artist.
+- The home page's "New releases" row shows the same releases as the page.
+
+### One rule for clicks
+- Clicking a cover or title opens its page: a song opens its album, an artist radio opens the artist, a song without a known album is looked up and opens its album, or else its artist or channel. Only mixes play on click; everything else plays from its play button.
+- Notification cards follow the same rule, and their channel names are links.
+- A joint upload by several channels links every channel name to its own page.
+
+### Look
+- No round cards anywhere: artists are rounded squares too.
+- Artist pictures are always the artist's own photo, never a cropped video thumbnail; with no photo, the name alone is shown.
+
+### Player bar
+- The volume slider narrows on small windows, so the controls never overlap the time readout.
+
 ## 2.1.0 — 2026-11-19
 
 Where the sound goes, and songs that start at once.

@@ -622,7 +622,34 @@ enum BridgeScript {
     return unit == null ? null : +m[1] * unit;
   }
 
-  function ytVideo(id, title, channel, channelId, length, thumb, age, avatar) {
+  // The channels behind a video: several for a collaboration ("A ve B"), from the parts of
+  // the byline that link to a channel or the dialog YouTube opens to list them; failing
+  // names there, the text is split and matched to the channel ids in order. When unsure,
+  // just the first channel, named by the whole text.
+  function channelsOf(root, label, firstId) {
+    const out = [];
+    const add = (id, name) => {
+      if (!id || !/^UC/.test(id)) return;
+      const known = out.find((c) => c.id === id);
+      if (known) { if (!known.name && name) known.name = name; } else out.push({ id, name: name || '' });
+    };
+    (function walk(n) {
+      if (!n || typeof n !== 'object') return;
+      if (Array.isArray(n)) { n.forEach(walk); return; }
+      if (n.listItemViewModel) add(findKey(n.listItemViewModel, 'browseEndpoint')?.browseId, n.listItemViewModel.title?.content || '');
+      if (typeof n.text === 'string' && n.navigationEndpoint?.browseEndpoint) add(n.navigationEndpoint.browseEndpoint.browseId, n.text);
+      if (n.browseEndpoint) add(n.browseEndpoint.browseId, '');
+      for (const k in n) walk(n[k]);
+    })(root);
+    const single = firstId ? [{ id: firstId, name: label }] : [];
+    if (out.length < 2) return single;
+    const parts = String(label).split(/\s*(?:,|&| ve | and | x )\s*/i).filter(Boolean);
+    out.forEach((c, i) => { if (!c.name && parts.length === out.length) c.name = parts[i]; });
+    const named = out.filter((c) => c.name);
+    return named.length >= 2 ? named : single;
+  }
+
+  function ytVideo(id, title, channel, channelId, length, thumb, age, avatar, channels) {
     const seconds = clockSeconds(length);
     if (!id || !title || !seconds) return null;
     return {
@@ -630,7 +657,8 @@ enum BridgeScript {
       item: {
         uid: nextId('yt'), kind: 'video', title, subtitle: [channel, length].filter(Boolean).join(' • '),
         thumbnail: thumb || `https://i.ytimg.com/vi/${id}/mqdefault.jpg`, videoId: id, browseId: null, params: null,
-        playlistId: null, artists: [], album: null, duration: length, explicit: false,
+        playlistId: null, artists: channels || (channelId ? [{ id: channelId, name: channel }] : []), album: null,
+        duration: length, explicit: false,
         play: JSON.stringify({ watchEndpoint: { videoId: id } }), wide: true, color: null,
       },
     };
@@ -653,9 +681,10 @@ enum BridgeScript {
   function fromVideoRenderer(v) {
     const owner = v.ownerText || v.shortBylineText || v.longBylineText;
     const length = text(v.lengthText) || text(findKey(v.thumbnailOverlays, 'thumbnailOverlayTimeStatusRenderer')?.text);
-    return ytVideo(v.videoId, text(v.title), text(owner),
-      owner?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId, length, bestThumb(v.thumbnail, 720),
-      text(v.publishedTimeText), bestThumb(v.channelThumbnailSupportedRenderers || v.channelThumbnail, 176));
+    const firstId = owner?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId;
+    return ytVideo(v.videoId, text(v.title), text(owner), firstId, length, bestThumb(v.thumbnail, 720),
+      text(v.publishedTimeText), bestThumb(v.channelThumbnailSupportedRenderers || v.channelThumbnail, 176),
+      channelsOf(owner, text(owner), firstId));
   }
 
   function fromLockup(l) {
@@ -669,8 +698,9 @@ enum BridgeScript {
       // The channel's picture: view models list it under "sources" (largest last).
       const sources = findKey(meta?.image, 'sources');
       const avatar = Array.isArray(sources) && sources.length ? sources[sources.length - 1].url : null;
-      return ytVideo(l.contentId, title, parts[0] || '', findKey(meta, 'browseEndpoint')?.browseId, badge?.text || '', thumb,
-        parts.find((p) => ageDays(p) != null) || '', avatar);
+      const firstId = findKey(meta, 'browseEndpoint')?.browseId;
+      return ytVideo(l.contentId, title, parts[0] || '', firstId, badge?.text || '', thumb,
+        parts.find((p) => ageDays(p) != null) || '', avatar, channelsOf(meta, parts[0] || '', firstId));
     }
     if (l.contentType === 'LOCKUP_CONTENT_TYPE_PLAYLIST' && /^RD/.test(l.contentId || '')) {
       return ytMix(l.contentId, findKey(l, 'watchEndpoint')?.videoId, title, parts[0] || '', thumb);
@@ -892,6 +922,55 @@ enum BridgeScript {
     async search({ query, params }) {
       const r = await api('search', params ? { query, params } : { query });
       return { header: null, chips: chipsOf(r), sections: extractSections(r), continuation: null };
+    },
+
+    // As-you-type suggestions for the search field: YouTube Music's (your recent searches,
+    // completions, a few artists / songs / albums with covers) and regular YouTube's
+    // completions. Either source may fail; whatever came back is used.
+    async searchSuggestions({ query }) {
+      const q = String(query || '').trim();
+      if (!q) return { suggestions: [], items: [] };
+      const hl = window.ytcfg.get('INNERTUBE_CONTEXT')?.client?.hl || 'en';
+      const [music, tube] = await Promise.allSettled([
+        api('music/get_search_suggestions', { input: q }),
+        http('https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&hl=' + encodeURIComponent(hl)
+          + '&q=' + encodeURIComponent(q), 'GET', {}, '', ''),
+      ]);
+      const suggestions = [];
+      const seen = new Set();
+      const add = (t, source) => {
+        const s = String(t || '').trim();
+        // "tiesto" and "Tiësto" are the same suggestion.
+        const key = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
+        if (!s || seen.has(key)) return;
+        seen.add(key);
+        suggestions.push({ text: s, source });
+      };
+      const items = [];
+      if (music.status === 'fulfilled') {
+        const history = [];
+        const found = [];
+        for (const sec of music.value.contents || []) {
+          for (const e of sec.searchSuggestionsSectionRenderer?.contents || []) {
+            const s = e.historySuggestionRenderer || e.searchSuggestionRenderer;
+            if (s) {
+              (e.historySuggestionRenderer ? history : found).push(s.navigationEndpoint?.searchEndpoint?.query || text(s.suggestion));
+            } else if (e.musicResponsiveListItemRenderer) {
+              const it = parseListItem(e.musicResponsiveListItemRenderer);
+              if (it && it.title) items.push(it);
+            }
+          }
+        }
+        history.slice(0, 3).forEach((t) => add(t, 'history'));
+        found.forEach((t) => add(t, 'music'));
+      }
+      if (tube.status === 'fulfilled' && tube.value.status === 200) {
+        try {
+          const list = JSON.parse(tube.value.body);
+          (Array.isArray(list?.[1]) ? list[1] : []).forEach((t) => add(t, 'youtube'));
+        } catch (e) { /* not JSON */ }
+      }
+      return { suggestions: suggestions.slice(0, 8), items: items.slice(0, 5) };
     },
 
     async searchMore({ token }) {
