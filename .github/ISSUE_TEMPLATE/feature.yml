@@ -1,0 +1,24 @@
+name: Özellik iste / Request a feature
+description: Bir fikrin veya iyileştirme önerin var. / You have an idea or an improvement.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Türkçe veya İngilizce yazabilirsin. / Write in Turkish or English.
+
+        Uygulama resmî bir YouTube Music istemcisi değil; YouTube'un izin vermediği şeyler yapılamayabilir. / This is an unofficial client; things YouTube doesn't allow may not be possible.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Neye ihtiyacın var? / What do you need?
+      description: Çözmek istediğin durumu anlat, çözümü değil. / Describe the situation you want to solve, rather than the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Aklındaki çözüm / Your idea
+      description: Nasıl çalışmasını istersin? Başka bir uygulamadan örnek verebilirsin. / How should it work? An example from another app is welcome.
+    validations:
+      required: false

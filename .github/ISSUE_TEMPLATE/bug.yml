@@ -1,0 +1,70 @@
+name: Hata bildir / Report a bug
+description: Bir şey beklediğin gibi çalışmıyor. / Something doesn't work as expected.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Bildirdiğin için teşekkürler. Türkçe veya İngilizce yazabilirsin. / Thanks for reporting. Write in Turkish or English.
+
+        **Hesap adını, @kullanıcı adını, çerezleri veya token'ları asla paylaşma.** / **Never share your account name, @handle, cookies or tokens.**
+  - type: textarea
+    id: what
+    attributes:
+      label: Ne oldu? / What happened?
+      description: Gördüğün sorunu kısaca anlat. Ekran görüntüsü eklersen hesap bilgilerini bulanıklaştır. / Describe the problem. If you add a screenshot, blur your account details.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Nasıl tekrarlanır? / Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: false
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ne olmasını beklerdin? / What did you expect?
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Uygulama sürümü / App version
+      description: "YT Music menüsü → YT Music Hakkında / YT Music menu → About YT Music"
+      placeholder: "2.5.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: macos
+    attributes:
+      label: macOS sürümü / macOS version
+      options:
+        - macOS 26 veya üstü / macOS 26 or later
+        - macOS 15
+        - macOS 14
+        - Diğer / Other
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Tanı kaydı (isteğe bağlı) / Diagnostic log (optional)
+      description: |
+        Sorun akış, oynatma veya sayfa yüklemesiyle ilgiliyse: `defaults write io.github.demir1283.ytmusic diagnosticLog -bool true` komutuyla kaydı aç, sorunu tekrarla, ilgili satırları buraya yapıştır. **Yapıştırmadan önce oku ve kişisel bilgileri sil.** Bitince `defaults delete io.github.demir1283.ytmusic diagnosticLog` ile kapat.
+
+        If the problem is about streaming, playback or page loading: turn the log on with the command above, reproduce it, paste the relevant lines. **Read it and remove personal information before pasting.** Turn it off afterwards with the delete command.
+      render: text
+    validations:
+      required: false
+  - type: checkboxes
+    id: safe
+    attributes:
+      label: Kontrol / Check
+      options:
+        - label: Paylaştığım içerikte hesap adı, çerez veya token yok. / What I shared contains no account name, cookies or tokens.
+          required: true

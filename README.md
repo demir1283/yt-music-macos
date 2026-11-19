@@ -112,6 +112,14 @@ If you edit `Tools/bridge.js`, copy it into `Sources/YTMusicMac/Engine/BridgeScr
 - **Upgrading from 1.0:** sign in once more; settings start fresh.
 </details>
 
+## Feedback
+
+- **Found a bug or want a feature?** [Open an issue](https://github.com/demir1283/yt-music-macos/issues/new/choose); there is a short form for each.
+- **A question or an idea?** Use [Discussions](https://github.com/demir1283/yt-music-macos/discussions).
+- **A security problem?** Report it privately through the [Security tab](https://github.com/demir1283/yt-music-macos/security/advisories/new), not in a public issue.
+
+Turkish and English are both welcome. Never post your account name, cookies or tokens.
+
 ## Credits
 
 - [yt-dlp-ejs](https://github.com/yt-dlp/ejs) (public domain), with [meriyah](https://github.com/meriyah/meriyah) (ISC) and [astring](https://github.com/davidbonnet/astring) (MIT).

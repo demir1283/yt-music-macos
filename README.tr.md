@@ -112,6 +112,14 @@ Akış adresi ──▶ yt-dlp-ejs (YouTube'un akış sınamasını çözer)
 - **1.0'dan yükseltme:** bir kez daha giriş yap; ayarlar sıfırdan başlar.
 </details>
 
+## Geri bildirim
+
+- **Hata mı buldun, bir özellik mi istiyorsun?** [Issue aç](https://github.com/demir1283/yt-music-macos/issues/new/choose); her biri için kısa bir form var.
+- **Sorun veya fikrin mi var?** [Tartışmalar](https://github.com/demir1283/yt-music-macos/discussions) bölümünü kullan.
+- **Güvenlik sorunu mu?** Herkese açık issue yerine [Güvenlik sekmesinden](https://github.com/demir1283/yt-music-macos/security/advisories/new) özel olarak bildir.
+
+Türkçe de İngilizce de olur. Hesap adını, çerezleri veya token'ları asla paylaşma.
+
 ## Teşekkürler
 
 - [yt-dlp-ejs](https://github.com/yt-dlp/ejs) (kamu malı), [meriyah](https://github.com/meriyah/meriyah) (ISC) ve [astring](https://github.com/davidbonnet/astring) (MIT) ile.

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Soru sor veya fikir paylaş / Ask a question or share an idea
+    url: https://github.com/demir1283/yt-music-macos/discussions
+    about: Sorun olmayan sorular ve fikirler için Tartışmalar'ı kullan. / Use Discussions for questions and ideas that are not bugs.
+  - name: Güvenlik açığı bildir / Report a security issue
+    url: https://github.com/demir1283/yt-music-macos/security/advisories/new
+    about: Güvenlik açıklarını herkese açık issue yerine buradan özel olarak ilet. / Report security issues privately here, not in a public issue.
