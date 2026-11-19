@@ -5,8 +5,7 @@
 <h1 align="center">YT Music for macOS</h1>
 
 <p align="center">
-  Mac için yerel bir YouTube Music istemcisi: ana sayfası, araması ve radyosu<br>
-  YouTube Music'in kendisinden daha akıllı.
+  Mac için SwiftUI ile yazılmış yerel bir YouTube Music istemcisi.
 </p>
 
 <p align="center">
@@ -26,21 +25,21 @@
 
 > **Resmî değildir.** YouTube veya Google ile bağlantısı yoktur. “YouTube” ve “YouTube Music”, Google LLC'nin ticari markalarıdır. Kendi YouTube Music hesabınız gerekir; en iyi ses kalitesi için Premium gerekir.
 
-## YouTube Music'te olmayıp burada olanlar
+## Neler ekliyor
 
-| | YouTube Music | YT Music for macOS |
-|---|---|---|
-| **Yeni çıkanlar** | Genel bir sayfa | Takip ettiğin sanatçıların son 20 yayını ve dinlediğin sanatçıların yeni müzikleri |
-| **Bildirimler** | Zil, çoğu Shorts | Takip ettiğin müzik kanallarının son yüklemeleri, Shorts yok |
-| **Radyo** | Şarkı sürümleri, klipler ve tekrar yüklemeler karışık | Önce resmî şarkı sürümleri, her şarkı bir kez, DJ setleri olduğu gibi |
-| **Seni tanıması** | Sunucuda, görünmez | Mac'inde tutulan, okuyup silebileceğin bir dinleme profili |
-| **DJ setleri** | Nadiren çıkar | Dinlediğin türlerde, normal YouTube'dan “Uzun setler” |
-| **Ses çıkışı** | Yalnızca sistem çıkışı | Yalnızca bu uygulama için hoparlör, Bluetooth, USB veya ekran seç; ya da AirPlay |
-| **Uzun kayıtlar** | Başlaması uzun sürebilir | Saatlik setler bir saniyede başlar, anında sarılır |
+YouTube Music'in sunduklarına ek olarak uygulamanın kendine ait birkaç özelliği var:
+
+- **Ana sayfa:** kısayollar, sanatçı istasyonları, hızlı seçimler ve dinlediklerine göre değişen satırlar.
+- **Yeni çıkanlar:** takip ettiğin ve dinlediğin sanatçıların son yayınları.
+- **Bildirimler:** takip ettiğin müzik kanallarının son yüklemeleri, Shorts olmadan.
+- **Radyo düzenleme (isteğe bağlı):** resmî şarkı sürümlerini öne alır, her şarkıyı bir kez çalar; DJ setlerine dokunmaz.
+- **Mac'inde dinleme geçmişi:** yukarıdaki öneriler için kullanılır; kapatabilir veya silebilirsin.
+- **Uzun setler:** dinlediğin türlerde, normal YouTube'dan DJ setleri ve canlı kayıtlar.
+- **Ses çıkışı:** yalnızca bu uygulama için hoparlör, Bluetooth, USB veya ekran çıkışı seç; ya da AirPlay kullan.
 
 ## 2.5'te yenilikler
 
-- **Yeni “Yeni çıkanlar” sayfası:** takip ettiğin sanatçıların son 20 yayını, dinlediğin sanatçıların yeni müzikleri, senin için seçilenler, YouTube Music'teki yenilikler ve yeni müzik videoları. Ana sayfadaki satır da aynı yayınları gösterir.
+- **Yeni “Yeni çıkanlar” sayfası:** takip ettiğin sanatçıların son 20 yayını, dinlediğin sanatçıların yeni müzikleri, senin için seçilenler, YouTube Music'teki yenilikler ve yeni müzik videoları.
 - **Ortak yüklemeler:** her kanalın adı kendi sayfasına giden bir bağlantıdır.
 - Ayrıca arama önerileri, daha net bir arama sayfası ve birçok küçük düzeltme; tam liste [değişiklik günlüğünde](CHANGELOG.md).
 
@@ -61,7 +60,7 @@ Sonra kenar çubuğunda **Giriş yap**'a tıklayıp Google ile giriş yap. macOS
 
 - **İçinde tarayıcı yok.** SwiftUI arayüzü ve Apple'ın kendi ses oynatıcısı. Electron yok, web oynatıcı yok.
 - **Tam kalite.** Premium ile 256 kbps AAC, olduğu gibi çalınır.
-- **Hafif.** Arka planda çalarken yaklaşık %1,5 CPU ve ~170 MB bellek.
+- **Hafif.** Arka planda çalarken yaklaşık %1,5 CPU ve ~170 MB bellek (geliştiricinin MacBook'unda ölçüldü).
 - **macOS'a uyumlu.** macOS 26'da Liquid Glass, medya tuşları, Denetim Merkezi, Dock menüsü, açık ve koyu mod.
 
 ## Klavye kısayolları

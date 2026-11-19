@@ -5,8 +5,7 @@
 <h1 align="center">YT Music for macOS</h1>
 
 <p align="center">
-  A native YouTube Music client for the Mac, with a smarter home page, search and radio<br>
-  than YouTube Music itself.
+  A native YouTube Music client for the Mac, built with SwiftUI.
 </p>
 
 <p align="center">
@@ -26,21 +25,21 @@
 
 > **Unofficial.** Not affiliated with YouTube or Google. “YouTube” and “YouTube Music” are trademarks of Google LLC. You need your own YouTube Music account; Premium unlocks the best audio quality.
 
-## What you get that YouTube Music doesn't have
+## What it adds
 
-| | YouTube Music | YT Music for macOS |
-|---|---|---|
-| **New releases** | One general page | The last 20 releases of the artists you follow, plus new music from the artists you listen to |
-| **Notifications** | The bell, mostly Shorts | Recent uploads from the music channels you follow, no Shorts |
-| **Radio** | Song versions, music videos and re-uploads mixed | Official song versions first, each song once, DJ sets left alone |
-| **Learning from you** | Hidden on the server | A listening profile kept on your Mac, which you can read and erase |
-| **DJ sets** | Rarely shown | “Long sets” from regular YouTube, in the genres you play |
-| **Sound output** | Only the system output | Choose speakers, Bluetooth, USB or a display for this app alone, or AirPlay |
-| **Long recordings** | Can take a while to start | Hour-long sets start in about a second and seek at once |
+On top of what YouTube Music offers, the app has a few things of its own:
+
+- **Home page:** shortcuts, artist stations, quick picks and rows that follow what you listen to.
+- **New releases:** the latest releases of the artists you follow and of the artists you listen to.
+- **Notifications:** recent uploads from the music channels you follow, without Shorts.
+- **Radio cleanup (optional):** prefers official song versions and plays each song once; DJ sets are left as they are.
+- **Listening history on your Mac:** used for the recommendations above; you can turn it off or erase it.
+- **Long sets:** DJ sets and live recordings from regular YouTube, in the genres you listen to.
+- **Sound output:** pick a speaker, Bluetooth, USB or display output for this app only, or use AirPlay.
 
 ## What's new in 2.5
 
-- **A new “New releases” page:** the last 20 releases of the artists you follow, new music from the artists you listen to, picks for you, what's new on YouTube Music and new music videos. The home page row shows the same releases.
+- **A new “New releases” page:** the last 20 releases of the artists you follow, new music from the artists you listen to, picks for you, what's new on YouTube Music and new music videos.
 - **Joint uploads:** every channel's name is a link to its own page.
 - Plus search suggestions, a clearer search page and many smaller fixes; the full list is in the [changelog](CHANGELOG.md).
 
@@ -61,7 +60,7 @@ Then click **Sign in** in the sidebar and log in with Google. Requires macOS 14 
 
 - **No browser inside.** SwiftUI interface and Apple's own audio player. No Electron, no web player.
 - **Full quality.** With Premium, 256 kbps AAC, played as it is.
-- **Light.** About 1.5 % CPU and ~170 MB of memory while playing in the background.
+- **Light.** About 1.5 % CPU and ~170 MB of memory while playing in the background (measured on the author's MacBook).
 - **At home on macOS.** Liquid Glass on macOS 26, media keys, Control Center, Dock menu, light and dark mode.
 
 ## Keyboard shortcuts
