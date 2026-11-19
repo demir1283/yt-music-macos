@@ -42,7 +42,7 @@ struct CollectionView: View {
                         .padding(.top, d.v(12, 20))
                         .padding(.bottom, d.v(14, 24))
                     if tracks.isEmpty {
-                        EmptyStateView(systemImage: "music.note.list", title: "Burada henüz şarkı yok")
+                        EmptyStateView(systemImage: "music.note.list", title: M.t("Burada henüz şarkı yok", "No songs here yet"))
                     } else {
                         TrackList(items: tracks, numbered: isAlbum, showArtwork: !isAlbum, showAlbum: !isAlbum,
                                   context: contextPlaylist, onReachEnd: loadMore)
@@ -83,7 +83,7 @@ struct CollectionView: View {
 
     private var editContext: PlaylistEditContext? {
         if isLiked {
-            return PlaylistEditContext(title: title, canMove: false, removeLabel: "Beğenilenlerden Kaldır",
+            return PlaylistEditContext(title: title, canMove: false, removeLabel: M.t("Beğenilenlerden Kaldır", "Remove from Liked Music"),
                                        remove: { item in
                                            guard let v = item.videoId else { return }
                                            withAnimation { tracks.removeAll { $0.id == item.id } }
@@ -92,7 +92,7 @@ struct CollectionView: View {
                                        move: { _, _ in })
         }
         guard let pl = ownedPlaylistId else { return nil }
-        return PlaylistEditContext(title: title, canMove: true, removeLabel: "Bu Listeden Kaldır",
+        return PlaylistEditContext(title: title, canMove: true, removeLabel: M.t("Bu Listeden Kaldır", "Remove from This Playlist"),
                                    remove: { item in remove(item, from: pl) },
                                    move: { item, delta in move(item, delta, in: pl) })
     }
@@ -140,7 +140,7 @@ struct CollectionView: View {
 
     private var typeLabel: String {
         if isAlbum, let first = page?.header?.subtitle.components(separatedBy: " • ").first, !first.isEmpty { return first }
-        return target.kind == "podcast" ? "Podcast" : "Çalma Listesi"
+        return target.kind == "podcast" ? "Podcast" : M.t("Çalma Listesi", "Playlist")
     }
 
     private var metaLine: String {
@@ -161,7 +161,7 @@ struct CollectionView: View {
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 } else if let artist = target.coverArtist, !artist.isEmpty {
-                    ArtistListCover(artist: artist, label: M.turkish ? "Popüler şarkılar" : "Top songs")
+                    ArtistListCover(artist: artist, label: M.t("Popüler şarkılar", "Top songs"))
                 } else {
                     Artwork(url: page?.header?.thumbnail.flatMap { $0.isEmpty ? nil : $0 }, cornerRadius: 10, placeholder: "music.note.list")
                 }
@@ -191,18 +191,18 @@ struct CollectionView: View {
                         .padding(.top, d.v(2, 4))
                 }
                 HStack(spacing: 10) {
-                    CapsuleButton(title: isPlayingHere ? "Duraklat" : "Çal",
+                    CapsuleButton(title: isPlayingHere ? M.t("Duraklat", "Pause") : M.t("Çal", "Play"),
                                   systemImage: isPlayingHere ? "pause.fill" : "play.fill", prominent: true) {
                         if isPlayingHere { app.engine.togglePlay() } else { playAll() }
                     }
-                    CapsuleButton(title: "Karıştır", systemImage: "shuffle") { shufflePlay() }
+                    CapsuleButton(title: M.t("Karıştır", "Shuffle"), systemImage: "shuffle") { shufflePlay() }
                     if let radio = page?.header?.radio {
-                        CapsuleButton(title: "Radyo", systemImage: "dot.radiowaves.left.and.right") {
+                        CapsuleButton(title: M.t("Radyo", "Radio"), systemImage: "dot.radiowaves.left.and.right") {
                             app.engine.play(endpoint: radio)
                         }
                     }
                     if ownedPlaylistId != nil {
-                        CapsuleButton(title: "Düzenle", systemImage: "pencil") { editPlaylist() }
+                        CapsuleButton(title: M.t("Düzenle", "Edit"), systemImage: "pencil") { editPlaylist() }
                     }
                     if let p = page?.header?.privacy.flatMap(PlaylistPrivacy.init(rawValue:)) {
                         Label(p.title, systemImage: p.icon)

@@ -38,7 +38,7 @@ struct NowPlayingHeader: View {
                 Marquee(id: track.videoId) {
                     HoverLink(track.title, font: .system(size: 19, weight: .bold), color: .primary,
                               action: albumId.map { id in { app.openAlbum(id) } })
-                        .help(albumId == nil ? "" : "Albüme git")
+                        .help(albumId == nil ? "" : M.t("Albüme git", "Go to album"))
                 }
                 Marquee(id: track.videoId + "a") {
                     ArtistByline(artists: e.currentArtists, fallback: track.artist,

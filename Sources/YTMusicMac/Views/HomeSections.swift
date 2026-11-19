@@ -121,7 +121,7 @@ struct PicksRow: View {
         HStack(alignment: .top, spacing: d.v(22, 32)) {
             if !picks.isEmpty {
                 VStack(alignment: .leading, spacing: d.v(8, 10)) {
-                    SectionTitle(title: "Senin için seçildi", subtitle: nil)
+                    SectionTitle(title: M.t("Senin için seçildi", "Picked for you"), subtitle: nil)
                     FeaturedPick(items: picks)
                 }
                 .frame(width: d.v(400, 480), alignment: .leading)
@@ -168,12 +168,12 @@ private struct FeaturedPick: View {
                             Text(item.title)
                                 .font(.system(size: d.v(24, 28), weight: .heavy))
                                 .lineLimit(2)
-                            Text(PersonalHome.isOfficial(item) ? "Editörlerin seçimi" : "Yeni çıkan")
+                            Text(PersonalHome.isOfficial(item) ? M.t("Editörlerin seçimi", "Editors' pick") : M.t("Yeni çıkan", "New release"))
                                 .font(.system(size: 13))
                                 .foregroundStyle(.secondary)
                             HStack(spacing: 10) {
                                 PlayCircle(size: d.v(36, 40)) { app.play(item) }
-                                CapsuleButton(title: "Aç", systemImage: "chevron.right") { app.open(item) }
+                                CapsuleButton(title: M.t("Aç", "Open"), systemImage: "chevron.right") { app.open(item) }
                             }
                             .padding(.top, 6)
                         }
@@ -205,7 +205,7 @@ private struct FeaturedPick: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .help("\(i + 1). öneri")
+                        .help(M.t("\(i + 1). öneri", "Pick \(i + 1)"))
                     }
                 }
             }
@@ -293,7 +293,7 @@ private struct StationCard: View {
                         .frame(width: side * 0.56, height: side * 0.56)
                         .offset(y: -side * 0.05)
                 }
-                Text("RADYO")
+                Text(M.t("RADYO", "RADIO"))
                     .font(.system(size: 10, weight: .heavy))
                     .foregroundStyle(.black.opacity(0.75))
                     .padding(10)

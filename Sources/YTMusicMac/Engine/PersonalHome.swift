@@ -32,7 +32,7 @@ import Foundation
 @MainActor
 enum PersonalHome {
     struct LoadError: LocalizedError {
-        var errorDescription: String? { "Ana sayfa yüklenemedi." }
+        var errorDescription: String? { M.t("Ana sayfa yüklenemedi.", "The home page couldn't be loaded.") }
     }
 
     /// Fewest cards a row may have; song lists need a little more.
@@ -226,39 +226,39 @@ enum PersonalHome {
         }
 
         // Notifications: right under the tiles, newest first.
-        if let s = shelf("notifications", "Senin için bildirimler", nil, noteItems, limit: 20, minimum: 2) { page.append(s) }
+        if let s = shelf("notifications", M.t("Senin için bildirimler", "Notifications for you"), nil, noteItems, limit: 20, minimum: 2) { page.append(s) }
 
         // 2. One pick at a time + stations.
         let picks = take(Array(releases.prefix(3)) + Array(editorial.prefix(2)), limit: 5)
         if !picks.isEmpty || stations.count >= 4 {
-            page.append(Shelf(id: "home-picks", title: "Tavsiye edilen istasyonlar",
+            page.append(Shelf(id: "home-picks", title: M.t("Tavsiye edilen istasyonlar", "Recommended stations"),
                               strapline: nil, layout: "picks",
                               items: picks + (stations.count >= 4 ? stations : []), more: nil, continuation: nil, top: nil))
         }
         // 3.
-        if let s = shelf("recent", "Son çalınanlar", nil, recentSongs, limit: 20) { page.append(s) }
+        if let s = shelf("recent", M.t("Son çalınanlar", "Recently played"), nil, recentSongs, limit: 20) { page.append(s) }
         // 4. Quick picks: a fresh random mix, every source represented, two songs per artist at most.
         let favourites = (profile.allTime(limit: 30) + profile.favourites(limit: 30)).map { Self.item($0) }.filter(wanted)
         let picksList = Self.randomMix([
             (quickItems.filter(wanted), 6), (savedSongs, 6), (recentSongs, 4), (trendSongs, 4), (favourites, 4),
         ], perArtist: 2, limit: 24)
         if picksList.count >= Self.minimumSongs {
-            page.append(Shelf(id: quick?.id ?? "home-quick", title: quick?.title ?? "Hızlı seçimler",
+            page.append(Shelf(id: quick?.id ?? "home-quick", title: quick?.title ?? M.t("Hızlı seçimler", "Quick picks"),
                               strapline: quick?.strapline, layout: "list", items: picksList,
                               more: nil, continuation: nil, top: nil))
         }
         // 5.
-        if let s = shelf("compiled", "\(Self.ownerName(engine)) için derlendi", nil, ytMixes + seedMixes, limit: 24) { page.append(s) }
+        if let s = shelf("compiled", M.t("\(Self.ownerName(engine)) için derlendi", "Compiled for \(Self.ownerName(engine))"), nil, ytMixes + seedMixes, limit: 24) { page.append(s) }
         // 6.
         if let first = artists.first, let p = artistPages.first,
            let s = Self.similarShelf(first, p.sections, wanted, shelf) { page.append(s) }
         // 7.
-        if let s = shelf("topmixes", "En çok dinlediğin mix'ler", nil, topMixes, limit: 12) { page.append(s) }
+        if let s = shelf("topmixes", M.t("En çok dinlediğin mix'ler", "Your top mixes"), nil, topMixes, limit: 12) { page.append(s) }
         // 8.
-        if let s = shelf("continue", "Kaldığın yerden devam et", nil,
+        if let s = shelf("continue", M.t("Kaldığın yerden devam et", "Jump back in"), nil,
                          profile.unfinished(limit: 20).map { Self.item($0) }.filter(wanted), limit: 20) { page.append(s) }
         // 9.
-        if let s = shelf("editorial", "YouTube Music'ten popüler listeler", nil, editorial, limit: 30) { page.append(s) }
+        if let s = shelf("editorial", M.t("YouTube Music'ten popüler listeler", "Popular playlists from YouTube Music"), nil, editorial, limit: 30) { page.append(s) }
         // 10.
         if artists.count > 1, artistPages.count > 1,
            let s = Self.similarShelf(artists[1], artistPages[1].sections, wanted, shelf) { page.append(s) }
@@ -266,15 +266,15 @@ enum PersonalHome {
         // Shown exactly as on the "Yeni Çıkanlar" page (not thinned against the other rows).
         let followedNew = await followedNewTask
         if !followedNew.isEmpty {
-            page.append(Shelf(id: "home-releases", title: "Yeni çıkanlar", strapline: nil, layout: "cards",
+            page.append(Shelf(id: "home-releases", title: M.t("Yeni çıkanlar", "New releases"), strapline: nil, layout: "cards",
                               items: followedNew, more: nil, continuation: nil, top: nil))
         }
-        if let s = shelf("sets", "Uzun setler", nil, sets, limit: 30) { page.append(s) }
-        if let s = shelf("artists", "Favori sanatçıların", nil, followed, limit: 30) { page.append(s) }
+        if let s = shelf("sets", M.t("Uzun setler", "Long sets"), nil, sets, limit: 30) { page.append(s) }
+        if let s = shelf("artists", M.t("Favori sanatçıların", "Your favourite artists"), nil, followed, limit: 30) { page.append(s) }
         // 14. Living cards.
         if let s = Self.spotlight(Array(artists.prefix(6)), artistPages, wanted) { page.append(s) }
         // 15.
-        if let s = shelf("again", "Tekrar dinle", nil,
+        if let s = shelf("again", M.t("Tekrar dinle", "Listen again"), nil,
                          profile.favourites(limit: 40).shuffled().map { Self.item($0) }.filter(wanted),
                          limit: 16, minimum: Self.minimumSongs, layout: "list") { page.append(s) }
         page += ytRows
@@ -288,7 +288,7 @@ enum PersonalHome {
     /// "Ayşe Y." from the account name (as Spotify writes it), or "Senin".
     private static func ownerName(_ engine: YTMusic) -> String {
         let parts = (engine.account?.name ?? "").split(separator: " ").map(String.init)
-        guard let first = parts.first else { return "Senin" }
+        guard let first = parts.first else { return M.t("Senin", "you") }
         if parts.count > 1, let initial = parts.last?.first { return "\(first) \(initial)." }
         return first
     }
@@ -296,7 +296,7 @@ enum PersonalHome {
     /// An artist's radio card.
     private static func station(_ artist: MediaItem, title: String? = nil, subtitle: String? = nil) -> MediaItem {
         MediaItem(uid: "station-\(artist.recommendationKey)", kind: "artistradio", title: title ?? artist.title,
-                  subtitle: subtitle ?? "\(artist.title) ve benzer sanatçılar", thumbnail: artist.thumbnail,
+                  subtitle: subtitle ?? M.t("\(artist.title) ve benzer sanatçılar", "\(artist.title) and similar artists"), thumbnail: artist.thumbnail,
                   videoId: nil, browseId: artist.browseId, params: nil, playlistId: nil, artists: [],
                   album: nil, duration: nil, explicit: false, play: nil, wide: false, color: nil)
     }
@@ -315,7 +315,7 @@ enum PersonalHome {
         let items = similarParts(sections, wanted).artists.filter {
             $0.browseId != artist.browseId && ListeningProfile.key($0.title) != own
         }
-        return shelf("similar-\(artist.recommendationKey)", "\(artist.title) ile benzer diğer müzikler", nil,
+        return shelf("similar-\(artist.recommendationKey)", M.t("\(artist.title) ile benzer diğer müzikler", "More like \(artist.title)"), nil,
                      items, 24, minimumCards, "similar", artist)
     }
 
@@ -329,12 +329,12 @@ enum PersonalHome {
             let parts = similarParts(page.sections, wanted)
             if i % 2 == 1, var release = parts.releases.first ?? parts.playlists.first {
                 release.banner = banner
-                cards.append(("\(artist.title) hayranları için", release))
+                cards.append((M.t("\(artist.title) hayranları için", "For fans of \(artist.title)"), release))
             } else {
-                var radio = station(artist, title: "\(artist.title) Radyosu",
-                                    subtitle: "\(artist.title) ve benzer sanatçılarla kesintisiz müzik")
+                var radio = station(artist, title: M.t("\(artist.title) Radyosu", "\(artist.title) Radio"),
+                                    subtitle: M.t("\(artist.title) ve benzer sanatçılarla kesintisiz müzik", "Non-stop music from \(artist.title) and similar artists"))
                 radio.banner = banner
-                cards.append(("\(artist.title) ile benzer diğer müzikler", radio))
+                cards.append((M.t("\(artist.title) ile benzer diğer müzikler", "More like \(artist.title)"), radio))
             }
         }
         let count = cards.count - cards.count % 2
@@ -423,9 +423,9 @@ enum PersonalHome {
     private static func uploadAge(_ days: Double?) -> String {
         guard let days else { return "" }
         switch Int(days) {
-        case ..<1: return "Bugün"
-        case 1: return "Dün"
-        case let n: return "\(n) gün önce"
+        case ..<1: return M.t("Bugün", "Today")
+        case 1: return M.t("Dün", "Yesterday")
+        case let n: return M.t("\(n) gün önce", "\(n) days ago")
         }
     }
 
@@ -663,10 +663,10 @@ enum PersonalHome {
     /// "Günaydın", "İyi günler"… as Spotify greets by the time of day.
     static func greeting(_ date: Date = Date()) -> String {
         switch Calendar.current.component(.hour, from: date) {
-        case 5..<12: return "Günaydın"
-        case 12..<18: return "İyi günler"
-        case 18..<23: return "İyi akşamlar"
-        default: return "İyi geceler"
+        case 5..<12: return M.t("Günaydın", "Good morning")
+        case 12..<18: return M.t("İyi günler", "Good afternoon")
+        case 18..<23: return M.t("İyi akşamlar", "Good evening")
+        default: return M.t("İyi geceler", "Good night")
         }
     }
 
@@ -774,7 +774,7 @@ enum PersonalHome {
     /// A radio around an artist, started from one of their songs.
     private static func mix(name: String, videoId: String, cover: String?) -> MediaItem {
         MediaItem(uid: "home-mix-\(videoId)", kind: "mix", title: "\(name) Mix",
-                  subtitle: "\(name) ve benzerleri",
+                  subtitle: M.t("\(name) ve benzerleri", "\(name) and similar artists"),
                   thumbnail: cover ?? "https://i.ytimg.com/vi/\(videoId)/hqdefault.jpg",
                   videoId: nil, browseId: nil, params: nil, playlistId: "RDAMVM" + videoId, artists: [],
                   album: nil, duration: nil, explicit: false, play: endpoint(videoId, "RDAMVM" + videoId),

@@ -8,7 +8,7 @@ struct OutputButton: View {
     var body: some View {
         let outputs = AudioOutputs.shared
         ToolbarIconButton(system: "airplayaudio", size: 14, active: outputs.activeUID != nil,
-                          help: "Ses çıkışı") { open.toggle() }
+                          help: M.t("Ses çıkışı", "Sound output")) { open.toggle() }
             .popover(isPresented: $open, arrowEdge: .top) { OutputList() }
     }
 }
@@ -17,19 +17,19 @@ private struct OutputList: View {
     var body: some View {
         let outputs = AudioOutputs.shared
         VStack(alignment: .leading, spacing: 2) {
-            Text("Bu Mac'te")
+            Text(M.t("Bu Mac'te", "On this Mac"))
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 8)
                 .padding(.bottom, 2)
-            OutputRow(symbol: "gearshape", title: "Sistem çıkışı", detail: outputs.systemName,
+            OutputRow(symbol: "gearshape", title: M.t("Sistem çıkışı", "System output"), detail: outputs.systemName,
                       selected: outputs.chosenUID == nil) { outputs.choose(nil) }
             ForEach(outputs.devices) { device in
                 OutputRow(symbol: device.kind.symbol, title: device.name, detail: nil,
                           selected: outputs.chosenUID == device.uid) { outputs.choose(device) }
             }
             if outputs.chosenUID != nil, outputs.activeUID == nil {
-                Text("\(outputs.chosenName ?? "Seçilen cihaz") bağlı değil; bağlanana kadar sistem çıkışı kullanılıyor.")
+                Text(M.t("\(outputs.chosenName ?? "Seçilen cihaz") bağlı değil; bağlanana kadar sistem çıkışı kullanılıyor.", "\(outputs.chosenName ?? "The chosen device") isn't connected; the system output is used until it is."))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -44,7 +44,7 @@ private struct OutputList: View {
                     .foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("AirPlay").font(.system(size: 13))
-                    Text("Apple TV, HomePod, AirPlay destekli TV ve hoparlörler")
+                    Text(M.t("Apple TV, HomePod, AirPlay destekli TV ve hoparlörler", "Apple TV, HomePod, AirPlay TVs and speakers"))
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -52,7 +52,7 @@ private struct OutputList: View {
                 Spacer(minLength: 4)
                 AirPlayButton()
                     .frame(width: 30, height: 30)
-                    .help("AirPlay cihazı seç")
+                    .help(M.t("AirPlay cihazı seç", "Choose an AirPlay device"))
             }
             .padding(.horizontal, 8)
         }

@@ -43,7 +43,7 @@ final class NativeCore: @unchecked Sendable {
         let http: @convention(block) (String, String, String, String, String, JSValue, JSValue) -> Void = {
             url, method, headersJSON, body, auth, resolve, reject in
             guard let u = URL(string: url) else {
-                reject.call(withArguments: ["Geçersiz adres"])
+                reject.call(withArguments: [M.t("Geçersiz adres", "Invalid address")])
                 return
             }
             var req = URLRequest(url: u)
@@ -100,7 +100,7 @@ final class NativeCore: @unchecked Sendable {
                     cont.resume(returning: value.toString() ?? "null")
                 }
                 let fail: @convention(block) (JSValue) -> Void = { error in
-                    var message = error.toString() ?? "Bilinmeyen hata"
+                    var message = error.toString() ?? M.t("Bilinmeyen hata", "Unknown error")
                     if error.isObject, let m = error.objectForKeyedSubscript("message"), m.isString {
                         message = m.toString() ?? message
                     }

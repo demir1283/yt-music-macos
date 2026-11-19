@@ -55,7 +55,7 @@ struct HomeView: View {
                         ShelfView(section: row.shelf).fadeSwap(row.key, id: row.id)
                     }
                     if current.sections.isEmpty {
-                        EmptyStateView(systemImage: "music.note", title: "Bu kategoride içerik bulunamadı")
+                        EmptyStateView(systemImage: "music.note", title: M.t("Bu kategoride içerik bulunamadı", "Nothing found in this category"))
                     }
                 } else if let error {
                     // Through the page task (not a loose Task that would outlive the page).
@@ -68,7 +68,7 @@ struct HomeView: View {
             }
             .padding(.vertical, d.pageTop)
         }
-        .navigationTitle(chip?.title ?? "Ana Sayfa")
+        .navigationTitle(chip?.title ?? M.t("Ana Sayfa", "Home"))
         .onChange(of: app.homeResetToken) { _, _ in
             if chip != nil { chip = nil }
         }
@@ -203,14 +203,14 @@ struct SignInBanner: View {
         HStack(spacing: 14) {
             AppGlyph(size: 44)
             VStack(alignment: .leading, spacing: 3) {
-                Text("YouTube Music hesabınla oturum aç")
+                Text(M.t("YouTube Music hesabınla oturum aç", "Sign in with your YouTube Music account"))
                     .font(.system(size: 15, weight: .semibold))
-                Text("Kişisel önerilerin, kitaplığın ve Premium ses kalitesi için.")
+                Text(M.t("Kişisel önerilerin, kitaplığın ve Premium ses kalitesi için.", "For your recommendations, your library and Premium audio quality."))
                     .font(.system(size: 12.5))
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            CapsuleButton(title: "Oturum Aç", systemImage: "person.crop.circle", prominent: true) {
+            CapsuleButton(title: M.t("Oturum Aç", "Sign In"), systemImage: "person.crop.circle", prominent: true) {
                 app.engine.showLogin()
             }
         }

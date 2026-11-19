@@ -69,9 +69,9 @@ private struct TransportControls: View {
         let e = app.engine
         HStack(spacing: compact ? 6 : 10) {
             if !compact {
-                ToolbarIconButton(system: "shuffle", size: 14, help: "Karıştır") { e.shuffle() }
+                ToolbarIconButton(system: "shuffle", size: 14, help: M.t("Karıştır", "Shuffle")) { e.shuffle() }
             }
-            ToolbarIconButton(system: "backward.fill", size: 16, bounce: true, help: "Önceki") { e.previous() }
+            ToolbarIconButton(system: "backward.fill", size: 16, bounce: true, help: M.t("Önceki", "Previous")) { e.previous() }
             Button { e.togglePlay() } label: {
                 ZStack {
                     if e.isLoading && e.track != nil {
@@ -93,12 +93,12 @@ private struct TransportControls: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(PressScaleStyle())
-            .help(e.isPlaying ? "Duraklat" : "Çal")
-            ToolbarIconButton(system: "forward.fill", size: 16, bounce: true, help: "Sonraki") { e.next() }
+            .help(e.isPlaying ? M.t("Duraklat", "Pause") : M.t("Çal", "Play"))
+            ToolbarIconButton(system: "forward.fill", size: 16, bounce: true, help: M.t("Sonraki", "Next")) { e.next() }
             if !compact {
                 ToolbarIconButton(system: e.repeatMode == "ONE" ? "repeat.1" : "repeat", size: 14,
                                   active: e.repeatMode != "NONE",
-                                  help: "Tekrarlama: \(e.repeatMode == "NONE" ? "Kapalı" : (e.repeatMode == "ALL" ? "Tümü" : "Tek şarkı"))") {
+                                  help: M.t("Tekrarlama: \(e.repeatMode == "NONE" ? "Kapalı" : (e.repeatMode == "ALL" ? "Tümü" : "Tek şarkı"))", "Repeat: \(e.repeatMode == "NONE" ? "Off" : (e.repeatMode == "ALL" ? "All" : "One song"))")) {
                     e.cycleRepeat()
                 }
             }
@@ -131,7 +131,7 @@ private struct NowPlayingCenter: View {
                         Marquee(id: t.videoId) {
                             HoverLink(t.title, font: .system(size: 13, weight: .semibold), color: .primary,
                                       action: albumId.map { id in { app.openAlbum(id) } })
-                                .help(albumId == nil ? "" : "Albüme git")
+                                .help(albumId == nil ? "" : M.t("Albüme git", "Go to album"))
                         }
                         Marquee(id: t.videoId + "a") {
                             ArtistByline(artists: e.currentArtists, fallback: t.artist, font: .system(size: 11.5))
@@ -141,7 +141,7 @@ private struct NowPlayingCenter: View {
                     .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 6)),
                                             removal: .opacity.combined(with: .offset(y: -6))))
                 } else {
-                    Text("Çalan bir şey yok")
+                    Text(M.t("Çalan bir şey yok", "Nothing playing"))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
@@ -277,22 +277,22 @@ private struct TrailingControls: View {
         HStack(spacing: 4) {
             if !compact {
                 ToolbarIconButton(system: e.likeStatus == "DISLIKE" ? "hand.thumbsdown.fill" : "hand.thumbsdown",
-                                  size: 14, help: "Beğenme") { e.dislike() }
+                                  size: 14, help: M.t("Beğenme", "Dislike")) { e.dislike() }
                     .disabled(e.track == nil)
             }
             ToolbarIconButton(system: e.likeStatus == "LIKE" ? "hand.thumbsup.fill" : "hand.thumbsup",
-                              size: 14, active: e.likeStatus == "LIKE", help: "Beğen") { e.like() }
+                              size: 14, active: e.likeStatus == "LIKE", help: M.t("Beğen", "Like")) { e.like() }
                 .disabled(e.track == nil)
             if !compact && e.loggedIn {
                 let saved = !e.savedIn.isEmpty
                 ToolbarIconButton(system: saved ? "text.badge.checkmark" : "text.badge.plus", size: 14, active: saved,
-                                  help: saved ? "Şu listelerde: \(e.savedIn.joined(separator: ", ")) — başka bir listeye ekle"
-                                              : "Çalma listesine ekle") {
+                                  help: saved ? M.t("Şu listelerde: \(e.savedIn.joined(separator: ", ")) — başka bir listeye ekle", "In \(e.savedIn.joined(separator: ", ")) — add to another playlist")
+                                              : M.t("Çalma listesine ekle", "Add to playlist")) {
                     app.addCurrentToPlaylist()
                 }
                 .disabled(e.track == nil)
             }
-            ToolbarIconButton(system: volumeIcon(e), size: 14, help: e.muted ? "Sesi aç" : "Sessiz") { e.toggleMute() }
+            ToolbarIconButton(system: volumeIcon(e), size: 14, help: e.muted ? M.t("Sesi aç", "Unmute") : M.t("Sessiz", "Mute")) { e.toggleMute() }
             if !compact {
                 ThinSlider(value: e.muted ? 0 : e.volume / 100,
                            onChanged: { e.setVolume(($0 * 100).rounded()) },
@@ -302,8 +302,8 @@ private struct TrailingControls: View {
             OutputButton()
             let hasLyrics = LyricsCenter.shared.available(for: e.track?.videoId)
             ToolbarIconButton(system: "quote.bubble", size: 14, active: hasLyrics && app.isPanelVisible && app.showLyrics,
-                              help: !hasLyrics ? "Bu şarkının sözleri yok"
-                                  : (app.isPanelVisible && app.showLyrics ? "Şarkı sözlerini gizle" : "Şarkı sözlerini göster")) {
+                              help: !hasLyrics ? M.t("Bu şarkının sözleri yok", "This song has no lyrics")
+                                  : (app.isPanelVisible && app.showLyrics ? M.t("Şarkı sözlerini gizle", "Hide lyrics") : M.t("Şarkı sözlerini göster", "Show lyrics"))) {
                 app.toggleLyrics()
             }
             .disabled(!hasLyrics)

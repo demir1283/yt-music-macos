@@ -14,6 +14,8 @@
   // ───────────────────────────── helpers ─────────────────────────────
   const SALT = Math.random().toString(36).slice(2, 7);
   let counter = 0;
+  // The app's own language, for the few messages written here (set by bootstrap).
+  let uiTurkish = true;
   const nextId = (p) => `${p}${SALT}${++counter}`;
   const num = (x) => (Number.isFinite(x) ? x : 0);
 
@@ -463,7 +465,7 @@
   async function editPlaylist(playlistId, actions) {
     const r = await api('browse/edit_playlist', { playlistId: plId(playlistId), actions });
     const status = r.status || '';
-    if (status && status !== 'STATUS_SUCCEEDED') throw new Error('YouTube Music değişikliği kabul etmedi (' + status + ')');
+    if (status && status !== 'STATUS_SUCCEEDED') throw new Error((uiTurkish ? 'YouTube Music değişikliği kabul etmedi (' : 'YouTube Music did not accept the change (') + status + ')');
     return r;
   }
 
@@ -1064,7 +1066,8 @@
 
 
 
-    bootstrap({ html, hasAuth, lang, region }) {
+    bootstrap({ html, hasAuth, lang, region, forceLang, ui }) {
+      uiTurkish = ui === 'tr';
       const cfg = {};
       let parsed = false, i = 0;
       while ((i = html.indexOf('ytcfg.set(', i)) >= 0) {
@@ -1086,6 +1089,8 @@
         cfg.LOGGED_IN = !!hasAuth;
       }
       if (cfg.LOGGED_IN == null) cfg.LOGGED_IN = !!hasAuth;
+      // A language picked in the app's Settings: YouTube's texts in that language too.
+      if (forceLang && cfg.INNERTUBE_CONTEXT.client) cfg.INNERTUBE_CONTEXT.client.hl = forceLang;
       window.ytcfg = { get: (k) => cfg[k] };
       let playerJs = cfg.PLAYER_JS_URL || null;
       if (!playerJs) {
@@ -1234,7 +1239,7 @@
       const body = { title, description: description || '', privacyStatus: privacy || 'PRIVATE' };
       if (videoIds && videoIds.length) body.videoIds = videoIds;
       const r = await api('playlist/create', body);
-      if (!r.playlistId) throw new Error('Çalma listesi oluşturulamadı');
+      if (!r.playlistId) throw new Error(uiTurkish ? 'Çalma listesi oluşturulamadı' : 'The playlist could not be created');
       return r.playlistId;
     },
 

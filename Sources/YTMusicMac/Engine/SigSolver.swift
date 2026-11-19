@@ -59,12 +59,12 @@ actor SigSolver {
             req.timeoutInterval = 30
             let (data, _) = try await NoCacheSession.shared.data(for: req)
             let code = String(decoding: data, as: UTF8.self)
-            guard code.count > 100_000 else { throw StreamError.unplayable("Oynatıcı betiği alınamadı") }
+            guard code.count > 100_000 else { throw StreamError.unplayable(M.t("Oynatıcı betiği alınamadı", "Player script couldn't be loaded")) }
             if foundSts == nil, let r = code.range(of: #"(?:signatureTimestamp|sts)\s*:\s*[0-9]{5}"#, options: .regularExpression) {
                 foundSts = Int(code[r].filter(\.isNumber).suffix(5))
             }
             guard let lib = EJSScripts.lib, let core = EJSScripts.core else {
-                throw StreamError.unplayable("Çözücü dosyaları uygulama paketinde yok")
+                throw StreamError.unplayable(M.t("Çözücü dosyaları uygulama paketinde yok", "The solver files are missing from the app bundle"))
             }
             let started = Date()
             c.evaluateScript(lib)
@@ -79,7 +79,7 @@ actor SigSolver {
                 })()
                 """)
             guard let o = out, o.isString, let s = o.toString(), !s.isEmpty else {
-                throw StreamError.unplayable("Çözücü hazırlanamadı: \(jsError ?? "bilinmeyen hata")")
+                throw StreamError.unplayable(M.t("Çözücü hazırlanamadı: \(jsError ?? "bilinmeyen hata")", "The solver couldn't be prepared: \(jsError ?? "unknown error")"))
             }
             pre = s
             Self.saveSolver(s, sts: foundSts, pre: preFile, stsFile: stsFile)
@@ -102,7 +102,7 @@ actor SigSolver {
             """)
         guard f.evaluateScript("typeof __fns.n === 'function'")?.toBool() == true else {
             try? FileManager.default.removeItem(at: preFile)
-            throw StreamError.unplayable("Çözücü fonksiyonları bulunamadı: \(fError ?? "")")
+            throw StreamError.unplayable(M.t("Çözücü fonksiyonları bulunamadı: \(fError ?? "")", "Solver functions not found: \(fError ?? "")"))
         }
         ctx = f
         loadedPlayer = id
@@ -111,14 +111,14 @@ actor SigSolver {
     }
 
     func solve(n: String?, sig: String?) throws -> (n: String?, sig: String?) {
-        guard let ctx else { throw StreamError.unplayable("Çözücü hazır değil") }
+        guard let ctx else { throw StreamError.unplayable(M.t("Çözücü hazır değil", "The solver isn't ready")) }
         var lastError: String?
         ctx.exceptionHandler = { _, e in lastError = e?.toString() }
         func run(_ fn: String, _ value: String) throws -> String {
             lastError = nil
             let r = ctx.objectForKeyedSubscript("__fns")?.objectForKeyedSubscript(fn)?.call(withArguments: [value])
             guard let r, r.isString, let s = r.toString(), lastError == nil else {
-                throw StreamError.unplayable("\(fn) çözülemedi: \(lastError ?? "boş sonuç")")
+                throw StreamError.unplayable(M.t("\(fn) çözülemedi: \(lastError ?? "boş sonuç")", "\(fn) couldn't be solved: \(lastError ?? "empty result")"))
             }
             return s
         }

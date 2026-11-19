@@ -292,13 +292,13 @@ struct ErrorView: View {
             Image(systemName: "wifi.exclamationmark")
                 .font(.system(size: 34))
                 .foregroundStyle(.secondary)
-            Text("İçerik yüklenemedi")
+            Text(M.t("İçerik yüklenemedi", "Couldn't load the content"))
                 .font(.title3.weight(.semibold))
             Text(message)
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button("Tekrar Dene", action: retry)
+            Button(M.t("Tekrar Dene", "Try Again"), action: retry)
                 .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, minHeight: 300)
@@ -370,7 +370,7 @@ struct FilterChips: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                chip("Tümü", isOn: selected == nil) { onSelect(nil) }
+                chip(M.t("Tümü", "All"), isOn: selected == nil) { onSelect(nil) }
                 ForEach(chips) { c in
                     chip(c.title, isOn: selected?.id == c.id) {
                         onSelect(selected?.id == c.id ? nil : c)
@@ -403,50 +403,50 @@ struct ItemMenu: View {
     @Environment(\.playlistEdit) private var playlistEdit
 
     var body: some View {
-        Button("Çal") { app.play(item) }
+        Button(M.t("Çal", "Play")) { app.play(item) }
         if item.playlistId != nil {
-            Button("Karışık Çal") { app.shuffle(item) }
+            Button(M.t("Karışık Çal", "Shuffle Play")) { app.shuffle(item) }
         }
         if item.isTrack {
-            Button("Şarkı Radyosunu Başlat") { app.startRadio(item) }
+            Button(M.t("Şarkı Radyosunu Başlat", "Start Song Radio")) { app.startRadio(item) }
         }
         if item.isTrack, let v = item.videoId, app.engine.loggedIn {
             Divider()
-            Button("Çalma Listesine Ekle…") { app.addToPlaylist(item) }
+            Button(M.t("Çalma Listesine Ekle…", "Add to Playlist…")) { app.addToPlaylist(item) }
             if let edit = playlistEdit {
                 Button(edit.removeLabel) { edit.remove(item) }
                 if edit.canMove, item.setVideoId != nil {
-                    Button("Yukarı Taşı") { edit.move(item, -1) }
-                    Button("Aşağı Taşı") { edit.move(item, 1) }
+                    Button(M.t("Yukarı Taşı", "Move Up")) { edit.move(item, -1) }
+                    Button(M.t("Aşağı Taşı", "Move Down")) { edit.move(item, 1) }
                 }
             }
-            Button("Beğen") { app.engine.rate(videoId: v, status: "LIKE") }
+            Button(M.t("Beğen", "Like")) { app.engine.rate(videoId: v, status: "LIKE") }
             if app.engine.isDisliked(v) {
-                Button("Beğenmemeyi Geri Al") {
+                Button(M.t("Beğenmemeyi Geri Al", "Undo Dislike")) {
                     app.engine.rate(videoId: v, status: "INDIFFERENT")
                     app.unhide(item)
                 }
             } else {
-                Button("Beğenmedim (bana önerme)") {
+                Button(M.t("Beğenmedim (bana önerme)", "Dislike (don't recommend)")) {
                     app.engine.rate(videoId: v, status: "DISLIKE")
                     app.hide(item)
                 }
             }
         } else if !item.isTrack, item.kind != "category" {
             Divider()
-            Button("Bana önerme") { app.hide(item) }
+            Button(M.t("Bana önerme", "Don't recommend")) { app.hide(item) }
         }
         if !item.artists.isEmpty {
             Divider()
             ForEach(item.artists, id: \.id) { a in
-                Button("Sanatçıya Git: \(a.name)") { app.openArtist(a.id) }
+                Button(M.t("Sanatçıya Git: \(a.name)", "Go to Artist: \(a.name)")) { app.openArtist(a.id) }
             }
         }
         if let album = item.album {
-            Button("Albüme Git") { app.openAlbum(album.id) }
+            Button(M.t("Albüme Git", "Go to Album")) { app.openAlbum(album.id) }
         }
         Divider()
-        Button("Bağlantıyı Kopyala") {
+        Button(M.t("Bağlantıyı Kopyala", "Copy Link")) {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(shareLink, forType: .string)
         }

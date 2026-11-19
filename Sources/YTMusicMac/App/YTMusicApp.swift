@@ -164,15 +164,53 @@ struct WindowRegistrar: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
-/// Menu text in the system language: Turkish when the Mac is set to Turkish, otherwise
-/// English. (The system's own menus — Edit, View, Window, Help — follow the same language
-/// through the bundle's localizations; see build.sh.)
+/// The app's language: Turkish when the Mac (or the choice in Settings) is Turkish,
+/// otherwise English. Every piece of text the app writes itself goes through `M.t`.
+///
+/// The choice in Settings is stored as this app's own "AppleLanguages", the standard
+/// per-app language setting, so the system's menus (Edit, View, Window, Help — through
+/// the bundle's localizations, see build.sh) follow it too. It is read once at launch:
+/// a change applies after a restart.
 enum M {
+    private static let key = "AppleLanguages"
+
+    /// "tr" or "en" when chosen in Settings; nil follows the system.
+    static var chosen: String? {
+        get {
+            let domain = UserDefaults.standard.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "")
+            return (domain?[key] as? [String])?.first
+        }
+        set {
+            if let newValue { UserDefaults.standard.set([newValue], forKey: key) }
+            else { UserDefaults.standard.removeObject(forKey: key) }
+        }
+    }
+
+    /// The choice the app was launched with.
+    static let launchedChoice: String? = chosen
+
     static let turkish: Bool = {
         let lang = Locale.preferredLanguages.first ?? Locale.current.identifier
         return lang.lowercased().hasPrefix("tr")
     }()
+
     static func t(_ tr: String, _ en: String) -> String { turkish ? tr : en }
+
+    /// Quits the app and opens it again. A small shell waits until this copy has really
+    /// quit before opening the app, so two copies are never open at once (and if quitting
+    /// were refused, nothing new opens).
+    @MainActor
+    static func relaunch() {
+        let pid = ProcessInfo.processInfo.processIdentifier
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        task.arguments = ["-c", "while /bin/kill -0 \(pid) 2>/dev/null; do /bin/sleep 0.2; done; /usr/bin/open \"$0\"",
+                          Bundle.main.bundlePath]
+        do { try task.run() } catch { return }
+        // macOS doesn't quit while a sheet is open on a window: close Settings first.
+        AppModel.shared.showSettings = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
+    }
 }
 
 struct AppCommands: Commands {

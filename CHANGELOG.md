@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.6.0 — 2026-11-19
+
+The whole app in English.
+
+- Every text the app writes itself — sidebar, home page rows, player bar, menus, settings, sheets, errors — is now in English on a Mac set to any language other than Turkish, and in Turkish on a Turkish Mac. Before, only the menus followed the system language.
+- New in Settings: **Language** (System, Türkçe, English). The choice applies after a restart (a Restart button appears), switches the system menus too, and asks YouTube for its texts — row titles, release dates, view counts — in the same language.
+- The like button shows a song as liked when it is in Liked Music — under the same id or as its song or video version — even when YouTube's queue data doesn't say so. Liked Music is read at launch, like the playlists, and kept in step with every like and unlike made in the app.
+
 ## 2.5.0 — 2026-11-19
 
 A new search, a new "New releases" page, and one rule for what a click does.

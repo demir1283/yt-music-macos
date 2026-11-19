@@ -16,8 +16,8 @@ enum EngineError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notReady: return "YouTube Music'e bağlanılamadı."
-        case .badResult: return "YouTube Music'ten beklenmeyen bir yanıt geldi."
+        case .notReady: return M.t("YouTube Music'e bağlanılamadı.", "Couldn't connect to YouTube Music.")
+        case .badResult: return M.t("YouTube Music'ten beklenmeyen bir yanıt geldi.", "YouTube Music sent an unexpected answer.")
         case .js(let m): return m
         }
     }
@@ -155,7 +155,7 @@ final class YTMusic {
         EngineLog.write("Başlangıç: istek")
         if core == nil { core = NativeCore() }
         guard let core else {
-            loadError = "JavaScript motoru başlatılamadı."
+            loadError = M.t("JavaScript motoru başlatılamadı.", "The JavaScript engine couldn't start.")
             return
         }
 
@@ -175,12 +175,15 @@ final class YTMusic {
             "hasAuth": YTAuth.hasAuthCookies,
             "lang": Locale.current.language.languageCode?.identifier ?? "en",
             "region": Locale.current.region?.identifier ?? "US",
+            // A language picked in Settings: ask YouTube for its texts in that language too.
+            "forceLang": M.launchedChoice ?? "",
+            "ui": M.turkish ? "tr" : "en",
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: args),
               let json = try? await core.call("bootstrap", argsJSON: String(decoding: data, as: UTF8.self)),
               let info = try? JSONDecoder().decode(BootInfo.self, from: Data(json.utf8)) else {
             EngineLog.write("Başlangıç: yapılandırma okunamadı")
-            loadError = "YouTube Music yapılandırması okunamadı."
+            loadError = M.t("YouTube Music yapılandırması okunamadı.", "YouTube Music's configuration couldn't be read.")
             return
         }
         visitorData = info.visitorData
@@ -323,7 +326,7 @@ final class YTMusic {
         resumeAt = start
         isPlaying = false
         isLoading = false
-        likeStatus = e.like ?? "INDIFFERENT"
+        likeStatus = resolvedLike(e.like, info)
         streamInfo = ""
         publishQueue()
         pushNowPlaying()
@@ -424,7 +427,7 @@ final class YTMusic {
                 guard token == playToken else { return }
                 resolving = false
                 isLoading = false
-                streamInfo = "Çalınamadı: \(error.localizedDescription)"
+                streamInfo = M.t("Çalınamadı: \(error.localizedDescription)", "Couldn't play: \(error.localizedDescription)")
             }
         }
     }
@@ -462,7 +465,7 @@ final class YTMusic {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
-                errors.append("hesap akışı: \(error.localizedDescription)")
+                errors.append(M.t("hesap akışı: \(error.localizedDescription)", "account stream: \(error.localizedDescription)"))
                 EngineLog.write("Akış (hesap) \(videoId): \(error.localizedDescription)")
             }
         }
@@ -473,7 +476,7 @@ final class YTMusic {
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
-                errors.append("uygulama akışı: \(error.localizedDescription)")
+                errors.append(M.t("uygulama akışı: \(error.localizedDescription)", "app stream: \(error.localizedDescription)"))
                 EngineLog.write("Akış (uygulama) \(videoId): \(error.localizedDescription)")
             }
         }
@@ -516,7 +519,7 @@ final class YTMusic {
         positionDate = Date()
         isLoading = true
         isPlaying = true
-        likeStatus = e.like ?? "INDIFFERENT"
+        likeStatus = resolvedLike(e.like, info)
         publishQueue()
         pushNowPlaying()
         if trackLinks.isEmpty { loadTrackMeta(vid) }
@@ -530,7 +533,7 @@ final class YTMusic {
                     track = TrackInfo(videoId: vid, title: info.title, artist: info.artist, album: info.album,
                                       artwork: info.artwork, duration: s.duration.rounded(.down), links: trackLinks)
                 }
-                streamInfo = s.label + (s.source == "signed" ? " · hesabınla" : "")
+                streamInfo = s.label + (s.source == "signed" ? M.t(" · hesabınla", " · with your account") : "")
                 currentSource = s.source
                 currentViaPlaylist = s.playlist != nil
                 resolving = false
@@ -567,7 +570,7 @@ final class YTMusic {
     /// in a row playback stops instead of running through the whole queue.
     private func skipUnplayable(_ reason: String) {
         EngineLog.write("Çalınamadı \(track?.videoId ?? "?"): \(reason)")
-        streamInfo = "Çalınamadı: \(reason)"
+        streamInfo = M.t("Çalınamadı: \(reason)", "Couldn't play: \(reason)")
         failuresInARow += 1
         guard failuresInARow < 3, queueIndex + 1 < items.count else {
             finishQueue()
@@ -797,6 +800,7 @@ final class YTMusic {
     private func rate(_ status: String) {
         likeStatus = status
         guard let id = track?.videoId else { return }
+        updateLiked(id, title: track?.title, artist: track?.artist, status: status)
         if items.indices.contains(queueIndex) { items[queueIndex].like = status }
         rememberRating(id, status)
         Task { _ = try? await call("rate", ["videoId": id, "status": status], as: Ignored.self) }
@@ -820,7 +824,51 @@ final class YTMusic {
             return
         }
         rememberRating(videoId, status)
+        updateLiked(videoId, title: nil, artist: nil, status: status)
         Task { _ = try? await call("rate", ["videoId": videoId, "status": status], as: Ignored.self) }
+    }
+
+    // MARK: - Is the playing song among my liked songs?
+    //
+    // YouTube's queue data often says nothing about a song being liked (or the song was
+    // liked as its music video, under another id), so Liked Music is indexed like the
+    // playlists: its video ids and "title|artist" keys, read at launch and kept in step
+    // with every rating made here.
+
+    @ObservationIgnored private var likedIndex: IndexedPlaylist?
+
+    private func inLiked(_ videoId: String, title: String, artist: String) -> Bool {
+        guard let liked = likedIndex else { return false }
+        if liked.videos.contains(videoId) { return true }
+        if let k = IndexedPlaylist.key(title: title, artist: artist) { return liked.keys.contains(k) }
+        return false
+    }
+
+    /// A rating YouTube or the user gave wins; otherwise the song is liked when it is in
+    /// Liked Music, under this id or as the same song.
+    private func resolvedLike(_ like: String?, _ info: TrackInfo) -> String {
+        if like == "LIKE" || like == "DISLIKE" { return like! }
+        if like == nil || like == "INDIFFERENT", inLiked(info.videoId, title: info.title, artist: info.artist) { return "LIKE" }
+        return "INDIFFERENT"
+    }
+
+    private func updateLiked(_ videoId: String, title: String?, artist: String?, status: String) {
+        guard var liked = likedIndex else { return }
+        let key = title.flatMap { t in artist.flatMap { IndexedPlaylist.key(title: t, artist: $0) } }
+        if status == "LIKE" {
+            liked.videos.insert(videoId)
+            if let key { liked.keys.insert(key) }
+        } else {
+            liked.videos.remove(videoId)
+            if let key { liked.keys.remove(key) }
+        }
+        likedIndex = liked
+    }
+
+    /// Once Liked Music is read, the playing song's button catches up.
+    private func refreshLike() {
+        guard let t = track, items.indices.contains(queueIndex), items[queueIndex].videoId == t.videoId else { return }
+        likeStatus = resolvedLike(items[queueIndex].like, t)
     }
 
     // MARK: - Disliked songs stay out of queues
@@ -997,10 +1045,10 @@ final class YTMusic {
         }
         let known = Set(out.map(\.playlistId))
         if let extra = try? await call("addToPlaylistOptions", ["videoId": videoId], as: [PlaylistOption].self) {
-            if out.isEmpty && extra.isEmpty { throw EngineError.js("Çalma listesi bulunamadı.") }
+            if out.isEmpty && extra.isEmpty { throw EngineError.js(M.t("Çalma listesi bulunamadı.", "Playlist not found.")) }
             out.append(contentsOf: extra.filter { !known.contains($0.playlistId) })
         } else if out.isEmpty {
-            throw EngineError.js("Çalma listeleri alınamadı.")
+            throw EngineError.js(M.t("Çalma listeleri alınamadı.", "Playlists couldn't be loaded."))
         }
         return out
     }
@@ -1114,6 +1162,14 @@ final class YTMusic {
         defer { indexing = false }
         repeat {
             indexAgain = false
+            if let d = try? await call("playlistIndex", ["playlistId": "LM"], as: PlaylistIndexData.self) {
+                var keys: Set<String> = []
+                for t in d.tracks { if let k = IndexedPlaylist.key(title: t.t, artist: t.a) { keys.insert(k) } }
+                likedIndex = IndexedPlaylist(id: "LM", title: d.title, thumbnail: nil, editable: false,
+                                             videos: Set(d.tracks.map(\.v)), keys: keys)
+                refreshLike()
+                EngineLog.write("Beğenilenler dizini: \(d.tracks.count) şarkı")
+            }
             var fresh: [String: IndexedPlaylist] = [:]
             var songs = 0
             for (n, (id, item)) in libraryPlaylistIDs().enumerated() {

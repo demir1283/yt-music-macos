@@ -63,7 +63,7 @@ struct BrowsePageView: View {
                         .fadeSwap(s.contentKey, id: s.id)
                     }
                     if page.sections.isEmpty {
-                        EmptyStateView(systemImage: "music.note", title: "Burada gösterilecek bir şey yok")
+                        EmptyStateView(systemImage: "music.note", title: M.t("Burada gösterilecek bir şey yok", "Nothing to show here"))
                     }
                 } else if let error {
                     ErrorView(message: error) { Task { await load(force: true) } }
@@ -120,7 +120,7 @@ struct LibraryView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: d.v(14, 20)) {
                 Picker("", selection: $app.libraryFilter) {
-                    ForEach(LibraryFilter.allCases) { Text($0.rawValue).tag($0) }
+                    ForEach(LibraryFilter.allCases) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -130,21 +130,21 @@ struct LibraryView: View {
                 if app.engine.libraryLoading && items.isEmpty {
                     PageSkeleton(layout: .cardGrid)
                 } else if items.isEmpty {
-                    EmptyStateView(systemImage: "square.stack", title: "Burada henüz bir şey yok")
+                    EmptyStateView(systemImage: "square.stack", title: M.t("Burada henüz bir şey yok", "Nothing here yet"))
                 } else {
                     CardGrid(items: items)
                 }
             }
             .padding(.vertical, d.pageTop)
         }
-        .navigationTitle("Kitaplık")
+        .navigationTitle(M.t("Kitaplık", "Library"))
         .pageChrome()
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button { Task { await app.engine.loadLibrary() } } label: {
                     Image(systemName: "arrow.clockwise")
                 }
-                .help("Kitaplığı yenile")
+                .help(M.t("Kitaplığı yenile", "Refresh library"))
             }
         }
     }

@@ -63,15 +63,15 @@ struct MediaItem: Codable, Identifiable, Hashable {
 
     var typeLabel: String {
         switch kind {
-        case "album": return "Albüm"
-        case "playlist": return "Çalma listesi"
-        case "artist": return "Sanatçı"
+        case "album": return M.t("Albüm", "Album")
+        case "playlist": return M.t("Çalma listesi", "Playlist")
+        case "artist": return M.t("Sanatçı", "Artist")
         case "podcast": return "Podcast"
-        case "episode": return "Bölüm"
+        case "episode": return M.t("Bölüm", "Episode")
         case "video": return "Video"
-        case "song": return "Şarkı"
+        case "song": return M.t("Şarkı", "Song")
         case "mix": return "Mix"
-        case "artistradio": return "Radyo"
+        case "artistradio": return M.t("Radyo", "Radio")
         default: return ""
         }
     }
@@ -195,9 +195,9 @@ enum PlaylistPrivacy: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .PRIVATE: return "Gizli"
-        case .UNLISTED: return "Liste dışı"
-        case .PUBLIC: return "Herkese açık"
+        case .PRIVATE: return M.t("Gizli", "Private")
+        case .UNLISTED: return M.t("Liste dışı", "Unlisted")
+        case .PUBLIC: return M.t("Herkese açık", "Public")
         }
     }
     var icon: String {

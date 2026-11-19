@@ -154,7 +154,7 @@ final class SearchSuggestionModel {
 /// The toolbar's search field as AppKit sees it. SwiftUI's focus state doesn't follow a
 /// text field placed in the toolbar, so whether it is being typed in is read from AppKit.
 enum SearchField {
-    static let placeholder = "Şarkı, sanatçı, albüm, podcast ara"
+    static let placeholder = M.t("Şarkı, sanatçı, albüm, podcast ara", "Search songs, artists, albums, podcasts")
 
     /// Whether `object` (a text-editing notification's sender) is the search field: the
     /// one text field outside the window's content, up in the toolbar.
@@ -362,7 +362,7 @@ private struct SuggestionRow: View {
                 Spacer(minLength: 6)
                 if selected, let play {
                     PlayCircle(size: 26, action: play)
-                        .help(item.isArtist ? "Popüler şarkılarını çal" : "Çal")
+                        .help(item.isArtist ? M.t("Popüler şarkılarını çal", "Play their popular songs") : M.t("Çal", "Play"))
                         .transition(.opacity)
                 }
             }

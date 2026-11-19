@@ -12,10 +12,10 @@ struct WebSheet: View {
             HStack(spacing: 10) {
                 Image(systemName: "person.crop.circle")
                     .foregroundStyle(Color.brand)
-                Text("YouTube Music'te oturum aç")
+                Text(M.t("YouTube Music'te oturum aç", "Sign in to YouTube Music"))
                     .font(.headline)
                 Spacer()
-                Button("Kapat") {
+                Button(M.t("Kapat", "Close")) {
                     app.engine.webSheet = nil
                 }
                 .keyboardShortcut(.cancelAction)

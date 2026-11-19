@@ -193,7 +193,7 @@ final class AudioPlayer {
         currentID = id
         statusObserver = item.observe(\.status) { [weak self] item, _ in
             let status = item.status
-            let message = item.error?.localizedDescription ?? "Oynatılamadı"
+            let message = item.error?.localizedDescription ?? M.t("Oynatılamadı", "Couldn't play")
             Task { @MainActor [weak self] in self?.statusChanged(id, status, message) }
         }
         endObserver = NotificationCenter.default.addObserver(
@@ -204,7 +204,7 @@ final class AudioPlayer {
         failObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemFailedToPlayToEndTime, object: item, queue: .main
         ) { [weak self] note in
-            let message = (note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError)?.localizedDescription ?? "Oynatılamadı"
+            let message = (note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError)?.localizedDescription ?? M.t("Oynatılamadı", "Couldn't play")
             Task { @MainActor [weak self] in self?.failed(id, message) }
         }
     }

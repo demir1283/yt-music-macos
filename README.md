@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 2.5.0" src="https://img.shields.io/badge/version-2.5.0-ff2d55">
+  <img alt="Version 2.6.0" src="https://img.shields.io/badge/version-2.6.0-ff2d55">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-000000?logo=apple">
   <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white">
   <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-3c8dbc">
@@ -36,6 +36,10 @@ On top of what YouTube Music offers, the app has a few things of its own:
 - **Listening history on your Mac:** used for the recommendations above; you can turn it off or erase it.
 - **Long sets:** DJ sets and live recordings from regular YouTube, in the genres you listen to.
 - **Sound output:** pick a speaker, Bluetooth, USB or display output for this app only, or use AirPlay.
+
+## What's new in 2.6
+
+- **English interface:** the whole app follows your Mac's language (English or Turkish), or the language you pick in Settings.
 
 ## What's new in 2.5
 

@@ -47,7 +47,7 @@ struct AddToPlaylistSheet: View {
             HStack(spacing: 12) {
                 Artwork(url: song.thumbnail, cornerRadius: 6).frame(width: 44, height: 44)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Çalma listesine ekle")
+                    Text(M.t("Çalma listesine ekle", "Add to playlist"))
                         .font(.system(size: 11.5, weight: .semibold))
                         .foregroundStyle(.secondary)
                     Text(song.title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
@@ -56,14 +56,14 @@ struct AddToPlaylistSheet: View {
                     }
                 }
                 Spacer()
-                Button("Kapat") { dismiss() }
+                Button(M.t("Kapat", "Close")) { dismiss() }
                     .keyboardShortcut(.cancelAction)
             }
             .padding(18)
 
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Çalma listelerinde ara", text: $filter)
+                TextField(M.t("Çalma listelerinde ara", "Search playlists"), text: $filter)
                     .textFieldStyle(.plain)
             }
             .padding(.horizontal, 12)
@@ -86,7 +86,7 @@ struct AddToPlaylistSheet: View {
                                 Image(systemName: "plus").font(.system(size: 16, weight: .semibold)).foregroundStyle(Color.brand)
                             }
                             .frame(width: 40, height: 40)
-                            Text("Yeni çalma listesi").font(.system(size: 13, weight: .semibold))
+                            Text(M.t("Yeni çalma listesi", "New playlist")).font(.system(size: 13, weight: .semibold))
                             Spacer()
                         }
                         .padding(.horizontal, 10)
@@ -182,7 +182,7 @@ private struct PlaylistOptionRow: View {
         .buttonStyle(.plain)
         .disabled(isIn)
         .onHover { hover = $0 }
-        .help(isIn ? "Bu şarkı zaten listede" : "Bu listeye ekle")
+        .help(isIn ? M.t("Bu şarkı zaten listede", "This song is already in the playlist") : M.t("Bu listeye ekle", "Add to this playlist"))
     }
 }
 
@@ -207,16 +207,16 @@ struct PlaylistEditorSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(isEdit ? "Çalma listesini düzenle" : "Yeni çalma listesi")
+            Text(isEdit ? M.t("Çalma listesini düzenle", "Edit playlist") : M.t("Yeni çalma listesi", "New playlist"))
                 .font(.system(size: 18, weight: .bold))
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("Ad").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
-                TextField("Çalma listesi adı", text: $title)
+                Text(M.t("Ad", "Name")).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                TextField(M.t("Çalma listesi adı", "Playlist name"), text: $title)
                     .textFieldStyle(.roundedBorder)
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text("Açıklama").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                Text(M.t("Açıklama", "Description")).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
                 TextEditor(text: $details)
                     .font(.system(size: 13))
                     .scrollContentBackground(.hidden)
@@ -226,7 +226,7 @@ struct PlaylistEditorSheet: View {
                     .frame(height: 80)
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text("Gizlilik").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                Text(M.t("Gizlilik", "Privacy")).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
                 Picker("", selection: $privacy) {
                     ForEach(PlaylistPrivacy.allCases) { p in
                         Label(p.title, systemImage: p.icon).tag(p)
@@ -243,19 +243,19 @@ struct PlaylistEditorSheet: View {
             HStack {
                 if case .edit(let id, _, _, _) = mode {
                     Button(role: .destructive) { confirmDelete = true } label: {
-                        Label("Çalma listesini sil", systemImage: "trash")
+                        Label(M.t("Çalma listesini sil", "Delete playlist"), systemImage: "trash")
                     }
-                    .confirmationDialog("“\(title)” silinsin mi?", isPresented: $confirmDelete) {
-                        Button("Sil", role: .destructive) { delete(id) }
-                        Button("Vazgeç", role: .cancel) {}
+                    .confirmationDialog(M.t("“\(title)” silinsin mi?", "Delete “\(title)”?"), isPresented: $confirmDelete) {
+                        Button(M.t("Sil", "Delete"), role: .destructive) { delete(id) }
+                        Button(M.t("Vazgeç", "Cancel"), role: .cancel) {}
                     } message: {
-                        Text("Bu işlem YouTube Music hesabından da silinir ve geri alınamaz.")
+                        Text(M.t("Bu işlem YouTube Music hesabından da silinir ve geri alınamaz.", "It is deleted from your YouTube Music account too, and can't be undone."))
                     }
                 }
                 Spacer()
-                Button("Vazgeç") { dismiss() }
+                Button(M.t("Vazgeç", "Cancel")) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button(isEdit ? "Kaydet" : "Oluştur") { save() }
+                Button(isEdit ? M.t("Kaydet", "Save") : M.t("Oluştur", "Create")) { save() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty || saving)
             }

@@ -21,8 +21,8 @@ struct NewReleasesView: View {
                         ShelfView(section: s).fadeSwap(s.contentKey, id: s.id)
                     }
                     if current.sections.isEmpty {
-                        EmptyStateView(systemImage: "sparkles", title: "Yeni çıkan bulunamadı",
-                                       message: "Biraz sonra yeniden dene.")
+                        EmptyStateView(systemImage: "sparkles", title: M.t("Yeni çıkan bulunamadı", "No new releases found"),
+                                       message: M.t("Biraz sonra yeniden dene.", "Try again in a little while."))
                     }
                 } else if let error {
                     ErrorView(message: error) { Task { await load(force: true) } }
@@ -32,7 +32,7 @@ struct NewReleasesView: View {
             }
             .padding(.vertical, d.pageTop)
         }
-        .navigationTitle("Yeni Çıkanlar")
+        .navigationTitle(M.t("Yeni Çıkanlar", "New Releases"))
         .pageChrome()
         .task(id: "\(app.engine.sessionID)|\(app.refreshToken)") { await load() }
     }

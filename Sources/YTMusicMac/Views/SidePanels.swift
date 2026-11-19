@@ -32,8 +32,8 @@ struct SidePanel: View {
                         .frame(minHeight: 180, maxHeight: showLyrics ? max(200, geo.size.height * 0.28) : .infinity)
                         .padding(.bottom, 10)
                 } else {
-                    EmptyStateView(systemImage: "music.note", title: "Çalan bir şey yok",
-                                   message: "Bir şarkı seçtiğinde burada kapak ve sıra görünür.")
+                    EmptyStateView(systemImage: "music.note", title: M.t("Çalan bir şey yok", "Nothing playing"),
+                                   message: M.t("Bir şarkı seçtiğinde burada kapak ve sıra görünür.", "Pick a song to see its cover and the queue here."))
                         .padding(.top, 40)
                     Spacer()
                 }
@@ -207,7 +207,7 @@ private struct SyncedLyricsLines: View, Equatable {
 private struct PanelQueueSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Sıradaki")
+            Text(M.t("Sıradaki", "Up Next"))
                 .font(.system(size: 13, weight: .bold))
                 .padding(.horizontal, 18)
                 .padding(.top, 12)
@@ -251,11 +251,11 @@ struct LyricsContent: View {
                         Text(src).font(.system(size: 11)).foregroundStyle(.secondary)
                     }
                 } else {
-                    EmptyStateView(systemImage: "quote.bubble", title: "Söz bulunamadı",
-                                   message: "Bu şarkı için YouTube Music'te söz yok.")
+                    EmptyStateView(systemImage: "quote.bubble", title: M.t("Söz bulunamadı", "No lyrics found"),
+                                   message: M.t("Bu şarkı için YouTube Music'te söz yok.", "YouTube Music has no lyrics for this song."))
                 }
             } else {
-                EmptyStateView(systemImage: "music.note", title: "Çalan bir şey yok")
+                EmptyStateView(systemImage: "music.note", title: M.t("Çalan bir şey yok", "Nothing playing"))
             }
         }
         .task(id: track?.videoId) {
@@ -284,8 +284,8 @@ struct QueuePanel: View {
                         .frame(maxWidth: .infinity)
                         .padding(.top, 24)
                 } else if queue.isEmpty {
-                    EmptyStateView(systemImage: "list.bullet", title: "Sıra boş",
-                                   message: "Bir şey çalmaya başladığında sıradaki şarkılar burada görünür.")
+                    EmptyStateView(systemImage: "list.bullet", title: M.t("Sıra boş", "The queue is empty"),
+                                   message: M.t("Bir şey çalmaya başladığında sıradaki şarkılar burada görünür.", "Once something plays, the songs coming up appear here."))
                 } else if !showCurrent {
                     ForEach(queue.dropFirst((current ?? -1) + 1), id: \.rowKey) { entry in
                         QueueRow(entry: entry, current: false)
@@ -293,14 +293,14 @@ struct QueuePanel: View {
                     }
                 } else {
                     if let c = current {
-                        Text("Şu An Çalıyor")
+                        Text(M.t("Şu An Çalıyor", "Now Playing"))
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 10)
                             .padding(.top, 10)
                         QueueRow(entry: queue[c], current: true)
                     }
-                    Text("Sıradaki")
+                    Text(M.t("Sıradaki", "Up Next"))
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 10)
@@ -365,10 +365,10 @@ struct QueueRow: View {
         .onTapGesture { if !current { app.engine.playQueue(index: entry.index) } }
         .contextMenu {
             if !current {
-                Button("Çal") { app.engine.playQueue(index: entry.index) }
+                Button(M.t("Çal", "Play")) { app.engine.playQueue(index: entry.index) }
                 if entry.videoId != nil {
                     Divider()
-                    Button("Bana önerme") { app.notInterested(entry) }
+                    Button(M.t("Bana önerme", "Don't recommend")) { app.notInterested(entry) }
                 }
             }
         }

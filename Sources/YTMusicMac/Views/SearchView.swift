@@ -62,12 +62,12 @@ struct SearchView: View {
         /// The row's title on the overview.
         var title: String {
             switch self {
-            case .songs: return "Şarkılar"
-            case .artists: return "Sanatçılar"
-            case .albums: return "Albümler"
-            case .playlists: return "Çalma listeleri"
-            case .videos: return "Videolar"
-            case .podcasts: return "Podcast'ler"
+            case .songs: return M.t("Şarkılar", "Songs")
+            case .artists: return M.t("Sanatçılar", "Artists")
+            case .albums: return M.t("Albümler", "Albums")
+            case .playlists: return M.t("Çalma listeleri", "Playlists")
+            case .videos: return M.t("Videolar", "Videos")
+            case .podcasts: return M.t("Podcast'ler", "Podcasts")
             case .hidden, .other: return ""
             }
         }
@@ -141,7 +141,7 @@ struct SearchView: View {
             }
             .padding(.vertical, d.pageTop)
         }
-        .navigationTitle(query.isEmpty ? "Ara" : "“\(query)”")
+        .navigationTitle(query.isEmpty ? M.t("Ara", "Search") : "“\(query)”")
         .pageChrome()
         .task(id: searchKey) { await runSearch() }
         .task { await loadCategories() }
@@ -172,8 +172,8 @@ struct SearchView: View {
                 filteredList
             }
             if results.sections.isEmpty && chipItems.isEmpty {
-                EmptyStateView(systemImage: "magnifyingglass", title: "Sonuç yok",
-                               message: "“\(query)” için bir şey bulunamadı.")
+                EmptyStateView(systemImage: "magnifyingglass", title: M.t("Sonuç yok", "No results"),
+                               message: M.t("“\(query)” için bir şey bulunamadı.", "Nothing found for “\(query)”."))
             }
         } else if let error {
             ErrorView(message: error) { Task { await runSearch() } }
@@ -195,7 +195,7 @@ struct SearchView: View {
         if loadingMore {
             ProgressView().controlSize(.small).frame(maxWidth: .infinity)
         } else if chipToken != nil && !tracks {
-            Button("Daha Fazla Göster") { loadMoreFiltered() }
+            Button(M.t("Daha Fazla Göster", "Show More")) { loadMoreFiltered() }
                 .buttonStyle(.link)
                 .frame(maxWidth: .infinity)
         }
@@ -229,7 +229,7 @@ struct SearchView: View {
                 // Titles on one baseline row, content boxes below share top and bottom edges.
                 HStack(alignment: .firstTextBaseline, spacing: d.v(16, 24)) {
                     if topItem != nil {
-                        SectionTitle(title: "En iyi sonuç").frame(width: d.topResult, alignment: .leading)
+                        SectionTitle(title: M.t("En iyi sonuç", "Top result")).frame(width: d.topResult, alignment: .leading)
                     }
                     if !headSongs.isEmpty {
                         SectionTitle(title: Kind.songs.title, action: chip(for: .songs).map { c in { chip = c } })
@@ -496,7 +496,7 @@ struct TopResultCard: View {
                 PlayCircle(size: 44) {
                     if item.isArtist, let id = item.browseId { app.playPopular(artistId: id) } else { app.play(item) }
                 }
-                .help(item.isArtist ? "Popüler şarkılarını çal" : "Çal")
+                .help(item.isArtist ? M.t("Popüler şarkılarını çal", "Play their popular songs") : M.t("Çal", "Play"))
                 .padding(16)
                 .transition(.opacity)
             }

@@ -41,7 +41,7 @@ struct MainWindow: View {
                             Button { app.back() } label: {
                                 Image(systemName: "chevron.left")
                             }
-                            .help("Geri (⌘[)")
+                            .help(M.t("Geri (⌘[)", "Back (⌘[)"))
                         }
                     }
                     ToolbarItem(placement: .principal) {
@@ -51,7 +51,7 @@ struct MainWindow: View {
                         Button { app.togglePanel() } label: {
                             Image(systemName: "sidebar.right")
                         }
-                        .help(app.isPanelVisible ? "Sözleri ve sırayı gizle (⌥⌘P)" : "Sözleri ve sırayı göster (⌥⌘P)")
+                        .help(app.isPanelVisible ? M.t("Sözleri ve sırayı gizle (⌥⌘P)", "Hide lyrics and queue (⌥⌘P)") : M.t("Sözleri ve sırayı göster (⌥⌘P)", "Show lyrics and queue (⌥⌘P)"))
                     }
                 }
 
@@ -291,12 +291,12 @@ struct BootOverlay: View {
             VStack(spacing: 16) {
                 AppGlyph(size: 64)
                 if let err = app.engine.loadError {
-                    Text("YouTube Music'e ulaşılamadı").font(.headline)
+                    Text(M.t("YouTube Music'e ulaşılamadı", "Couldn't reach YouTube Music")).font(.headline)
                     Text(err).font(.callout).foregroundStyle(.secondary)
-                    Button("Tekrar Dene") { app.engine.reloadHome() }
+                    Button(M.t("Tekrar Dene", "Try Again")) { app.engine.reloadHome() }
                 } else {
                     ProgressView().controlSize(.small)
-                    Text("YouTube Music'e bağlanılıyor…")
+                    Text(M.t("YouTube Music'e bağlanılıyor…", "Connecting to YouTube Music…"))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }

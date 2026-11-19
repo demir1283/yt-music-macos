@@ -26,7 +26,7 @@ enum StreamError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unplayable(let reason): return reason
-        case .noFormat: return "Uygun ses akışı bulunamadı"
+        case .noFormat: return M.t("Uygun ses akışı bulunamadı", "No suitable audio stream found")
         }
     }
 }
@@ -77,13 +77,13 @@ enum StreamResolver {
         if data.status != "OK" {
             throw StreamError.unplayable(data.reason.isEmpty ? data.status : data.reason)
         }
-        if let got = data.videoId, got != videoId { throw StreamError.unplayable("Farklı bir video döndü") }
+        if let got = data.videoId, got != videoId { throw StreamError.unplayable(M.t("Farklı bir video döndü", "A different video came back")) }
 
         let candidates = data.formats.filter {
             $0.mimeType.hasPrefix("audio/mp4") && !$0.drc && $0.isDefault && ($0.url != nil || $0.cipher != nil)
         }.sorted { $0.bitrate > $1.bitrate }
         guard let best = candidates.first else {
-            if data.sabr { throw StreamError.unplayable("YouTube bu oturum için yalnızca SABR akışı veriyor") }
+            if data.sabr { throw StreamError.unplayable(M.t("YouTube bu oturum için yalnızca SABR akışı veriyor", "YouTube only offers a SABR stream for this session")) }
             throw StreamError.noFormat
         }
 
@@ -106,7 +106,7 @@ enum StreamResolver {
         guard let base, var comps = URLComponents(string: base) else { throw StreamError.noFormat }
         let n = comps.queryItems?.first(where: { $0.name == "n" })?.value
         if n != nil || sig != nil {
-            guard playerJS != nil else { throw StreamError.unplayable("Oynatıcı betiği bulunamadı") }
+            guard playerJS != nil else { throw StreamError.unplayable(M.t("Oynatıcı betiği bulunamadı", "Player script not found")) }
             let solved = try await SigSolver.shared.solve(n: n, sig: sig)
             // Keep YouTube's own encoding for every other parameter.
             var items = comps.percentEncodedQueryItems ?? []
@@ -196,7 +196,7 @@ enum StreamResolver {
         // The response must be for the video we asked for (YouTube sometimes swaps it).
         let details = root["videoDetails"] as? [String: Any]
         if let got = details?["videoId"] as? String, got != videoId {
-            throw StreamError.unplayable("Farklı bir video döndü")
+            throw StreamError.unplayable(M.t("Farklı bir video döndü", "A different video came back"))
         }
         guard let streaming = root["streamingData"] as? [String: Any] else { throw StreamError.noFormat }
         let headers = ["User-Agent": client.userAgent]

@@ -10,7 +10,7 @@ struct BrowseTarget: Hashable {
     /// name ("<Artist> · Popüler şarkılar") instead of a picture.
     var coverArtist: String? = nil
 
-    static let likedSongs = BrowseTarget(browseId: "VLLM", params: nil, kind: "playlist", title: "Beğenilen Müzikler")
+    static let likedSongs = BrowseTarget(browseId: "VLLM", params: nil, kind: "playlist", title: M.t("Beğenilen Müzikler", "Liked Music"))
 }
 
 /// Top-level destinations in the sidebar.
@@ -29,17 +29,17 @@ enum SidebarItem: Hashable {
 
     var title: String {
         switch self {
-        case .search: return "Ara"
-        case .home: return "Ana Sayfa"
-        case .explore: return "Keşfet"
-        case .charts: return "Listeler"
-        case .moods: return "Ruh Hali ve Türler"
-        case .newReleases: return "Yeni Çıkanlar"
-        case .podcasts: return "Podcast'ler"
-        case .library: return "Kitaplık"
-        case .liked: return "Beğenilen Müzikler"
-        case .history: return "Geçmiş"
-        case .playlist(let t): return t.title ?? "Çalma Listesi"
+        case .search: return M.t("Ara", "Search")
+        case .home: return M.t("Ana Sayfa", "Home")
+        case .explore: return M.t("Keşfet", "Explore")
+        case .charts: return M.t("Listeler", "Charts")
+        case .moods: return M.t("Ruh Hali ve Türler", "Moods & Genres")
+        case .newReleases: return M.t("Yeni Çıkanlar", "New Releases")
+        case .podcasts: return M.t("Podcast'ler", "Podcasts")
+        case .library: return M.t("Kitaplık", "Library")
+        case .liked: return M.t("Beğenilen Müzikler", "Liked Music")
+        case .history: return M.t("Geçmiş", "History")
+        case .playlist(let t): return t.title ?? M.t("Çalma Listesi", "Playlist")
         }
     }
 
@@ -82,10 +82,15 @@ enum PanelMode: Hashable {
 }
 
 enum LibraryFilter: String, CaseIterable, Identifiable {
-    case playlists = "Çalma Listeleri"
-    case albums = "Albümler"
-    case artists = "Sanatçılar"
+    case playlists, albums, artists
     var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .playlists: return M.t("Çalma Listeleri", "Playlists")
+        case .albums: return M.t("Albümler", "Albums")
+        case .artists: return M.t("Sanatçılar", "Artists")
+        }
+    }
 }
 
 /// UI-level state: sidebar selection, navigation stack, side panels, search text.
@@ -366,7 +371,7 @@ final class AppModel {
            chip.params != nil || chip.browseId != nil {
             return try await engine.home(params: chip.params, browseId: chip.browseId)
         }
-        throw EngineError.js("Bu hesapta podcast sayfası bulunamadı.")
+        throw EngineError.js(M.t("Bu hesapta podcast sayfası bulunamadı.", "No podcast page was found for this account."))
     }
 
     /// The page from memory while it is current (see PageCache), otherwise fetched again.

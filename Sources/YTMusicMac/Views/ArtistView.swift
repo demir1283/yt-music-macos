@@ -42,7 +42,7 @@ struct ArtistView: View {
                     }
                     if let about = page.header?.description, !about.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
-                            SectionTitle(title: "Hakkında")
+                            SectionTitle(title: M.t("Hakkında", "About"))
                             Text(about)
                                 .font(.system(size: 13))
                                 .foregroundStyle(.secondary)
@@ -94,7 +94,7 @@ struct ArtistView: View {
                 }
                 if let radio = h?.radio {
                     Button { app.engine.play(endpoint: radio) } label: {
-                        Label("Radyo", systemImage: "dot.radiowaves.left.and.right")
+                        Label(M.t("Radyo", "Radio"), systemImage: "dot.radiowaves.left.and.right")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 14)
@@ -168,7 +168,7 @@ private struct SubscribeButton: View {
                         .font(.system(size: 11, weight: .bold))
                         .transition(.scale.combined(with: .opacity))
                 }
-                Text(on ? "Abone olundu" : "Abone ol")
+                Text(on ? M.t("Abone olundu", "Subscribed") : M.t("Abone ol", "Subscribe"))
                 if !on, let count = header.subscriberShort, !count.isEmpty {
                     Text(count).opacity(0.55)
                 }
@@ -185,11 +185,11 @@ private struct SubscribeButton: View {
         .buttonStyle(PressScaleStyle())
         .disabled(busy)
         .onHover { hover = $0 }
-        .help(failure ?? (on ? "Aboneliği iptal et" : "\(name) kanalına abone ol"))
+        .help(failure ?? (on ? M.t("Aboneliği iptal et", "Unsubscribe") : M.t("\(name) kanalına abone ol", "Subscribe to \(name)")))
         .animation(.easeInOut(duration: 0.2), value: on)
-        .confirmationDialog("\(name) kanalından aboneliğin iptal edilsin mi?", isPresented: $confirm) {
-            Button("Abonelikten Çık", role: .destructive) { set(false) }
-            Button("Vazgeç", role: .cancel) {}
+        .confirmationDialog(M.t("\(name) kanalından aboneliğin iptal edilsin mi?", "Unsubscribe from \(name)?"), isPresented: $confirm) {
+            Button(M.t("Abonelikten Çık", "Unsubscribe"), role: .destructive) { set(false) }
+            Button(M.t("Vazgeç", "Cancel"), role: .cancel) {}
         }
     }
 
@@ -205,7 +205,7 @@ private struct SubscribeButton: View {
                                                    params: value ? header.subscribeParams : header.unsubscribeParams)
             } catch {
                 withAnimation(.easeInOut(duration: 0.2)) { subscribed = before }
-                failure = "İşlem yapılamadı: \(error.localizedDescription)"
+                failure = M.t("İşlem yapılamadı: \(error.localizedDescription)", "That didn't work: \(error.localizedDescription)")
             }
             busy = false
         }

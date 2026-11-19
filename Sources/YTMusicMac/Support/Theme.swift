@@ -58,15 +58,15 @@ enum BackgroundStyle: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .plain: return "Sade"
-        case .flow: return "Akış"
+        case .plain: return M.t("Sade", "Plain")
+        case .flow: return M.t("Akış", "Flow")
         }
     }
     var isAnimated: Bool { self == .flow }
     var caption: String {
         switch self {
-        case .plain: return "Renksiz, düz arka plan."
-        case .flow: return "Kâğıda kalemle çizilmiş gibi, nefes alan ince eş yükselti çizgileri."
+        case .plain: return M.t("Renksiz, düz arka plan.", "A plain background without colour.")
+        case .flow: return M.t("Kâğıda kalemle çizilmiş gibi, nefes alan ince eş yükselti çizgileri.", "Fine contour lines that breathe, as if drawn on paper with a pen.")
         }
     }
 
@@ -84,9 +84,9 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .system: return "Sistem"
-        case .light: return "Açık"
-        case .dark: return "Koyu"
+        case .system: return M.t("Sistem", "System")
+        case .light: return M.t("Açık", "Light")
+        case .dark: return M.t("Koyu", "Dark")
         }
     }
 }
@@ -100,16 +100,16 @@ final class ThemeStore {
     static let accents: [AccentChoice] = [
         AccentChoice(id: "apple", name: "Apple Music", hex: 0xFA2D48),
         AccentChoice(id: "youtube", name: "YouTube", hex: 0xFF0033),
-        AccentChoice(id: "coral", name: "Mercan", hex: 0xFF6B5B),
-        AccentChoice(id: "orange", name: "Gün Batımı", hex: 0xFF9F0A),
-        AccentChoice(id: "yellow", name: "Güneş", hex: 0xF5C400),
-        AccentChoice(id: "green", name: "Nane", hex: 0x30D158),
-        AccentChoice(id: "teal", name: "Turkuaz", hex: 0x2EC4C6),
-        AccentChoice(id: "blue", name: "Okyanus", hex: 0x0A84FF),
-        AccentChoice(id: "indigo", name: "Gece", hex: 0x5E5CE6),
-        AccentChoice(id: "purple", name: "Lavanta", hex: 0xBF5AF2),
-        AccentChoice(id: "pink", name: "Pembe", hex: 0xFF375F),
-        AccentChoice(id: "graphite", name: "Grafit", hex: 0x8E8E93),
+        AccentChoice(id: "coral", name: M.t("Mercan", "Coral"), hex: 0xFF6B5B),
+        AccentChoice(id: "orange", name: M.t("Gün Batımı", "Sunset"), hex: 0xFF9F0A),
+        AccentChoice(id: "yellow", name: M.t("Güneş", "Sun"), hex: 0xF5C400),
+        AccentChoice(id: "green", name: M.t("Nane", "Mint"), hex: 0x30D158),
+        AccentChoice(id: "teal", name: M.t("Turkuaz", "Turquoise"), hex: 0x2EC4C6),
+        AccentChoice(id: "blue", name: M.t("Okyanus", "Ocean"), hex: 0x0A84FF),
+        AccentChoice(id: "indigo", name: M.t("Gece", "Night"), hex: 0x5E5CE6),
+        AccentChoice(id: "purple", name: M.t("Lavanta", "Lavender"), hex: 0xBF5AF2),
+        AccentChoice(id: "pink", name: M.t("Pembe", "Pink"), hex: 0xFF375F),
+        AccentChoice(id: "graphite", name: M.t("Grafit", "Graphite"), hex: 0x8E8E93),
     ]
 
     var accentID: String {

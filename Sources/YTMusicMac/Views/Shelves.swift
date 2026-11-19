@@ -408,7 +408,7 @@ struct TrackListSection: View {
             TrackList(items: shown, numbered: numbered, showArtwork: true, showAlbum: true)
                 .padding(.horizontal, d.pad)
             if section.items.count > limit {
-                Button(expanded ? "Daha Az Göster" : "Tümünü Göster") {
+                Button(expanded ? M.t("Daha Az Göster", "Show Less") : M.t("Tümünü Göster", "Show All")) {
                     withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() }
                 }
                 .buttonStyle(.link)
@@ -466,13 +466,13 @@ private struct TrackListRows: View {
     /// Album pages list play counts ("28 Mn dinlenme") where other lists show artists.
     static func secondColumnTitle(_ items: [MediaItem]) -> String {
         let tracks = items.filter(\.isTrack)
-        guard !tracks.isEmpty, tracks.allSatisfy({ $0.artists.isEmpty }) else { return "Sanatçı" }
+        guard !tracks.isEmpty, tracks.allSatisfy({ $0.artists.isEmpty }) else { return M.t("Sanatçı", "Artist") }
         let words = ["dinlenme", "plays", "play", "görüntüleme", "views"]
         let counts = tracks.filter { t in
             let s = t.subtitle.lowercased()
             return words.contains { s.contains($0) }
         }
-        return counts.count * 2 >= tracks.count ? "Dinlenme" : "Sanatçı"
+        return counts.count * 2 >= tracks.count ? M.t("Dinlenme", "Plays") : M.t("Sanatçı", "Artist")
     }
 }
 
@@ -481,7 +481,7 @@ struct TrackListHeader: View {
     let numbered: Bool
     let showArtwork: Bool
     let showAlbum: Bool
-    var secondTitle = "Sanatçı"
+    var secondTitle = M.t("Sanatçı", "Artist")
     @Environment(\.density) private var d
 
     var body: some View {
@@ -494,10 +494,10 @@ struct TrackListHeader: View {
                 if showArtwork {
                     Color.clear.frame(width: d.trackArt, height: 1)
                 }
-                Text("Başlık").frame(maxWidth: .infinity, alignment: .leading)
+                Text(M.t("Başlık", "Title")).frame(maxWidth: .infinity, alignment: .leading)
                 Text(secondTitle).frame(maxWidth: .infinity, alignment: .leading)
                 if showAlbum {
-                    Text("Albüm").frame(maxWidth: .infinity, alignment: .leading)
+                    Text(M.t("Albüm", "Album")).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 Image(systemName: "clock")
                     .frame(width: 48, alignment: .trailing)

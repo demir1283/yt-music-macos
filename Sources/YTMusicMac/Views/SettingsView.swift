@@ -8,20 +8,21 @@ struct SettingsView: View {
     @AppStorage("curateRadio") private var curateRadio = true
     @AppStorage(ListeningLog.enabledKey) private var keepHistory = true
     @ViewState var historyBytes = ListeningLog.shared.byteCount
+    @ViewState var language = M.chosen ?? "system"
 
     var body: some View {
         @Bindable var theme = theme
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Ayarlar").font(.system(size: 17, weight: .bold))
+                Text(M.t("Ayarlar", "Settings")).font(.system(size: 17, weight: .bold))
                 Spacer()
-                Button("Bitti") { dismiss() }
+                Button(M.t("Bitti", "Done")) { dismiss() }
                     .keyboardShortcut(.defaultAction)
             }
 
             Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 16) {
                 GridRow {
-                    label("Görünüm")
+                    label(M.t("Görünüm", "Appearance"))
                     Picker("", selection: $theme.appearance) {
                         ForEach(AppearanceMode.allCases) { Text($0.title).tag($0) }
                     }
@@ -31,7 +32,7 @@ struct SettingsView: View {
                 }
 
                 GridRow(alignment: .top) {
-                    label("Renk").padding(.top, 3)
+                    label(M.t("Renk", "Colour")).padding(.top, 3)
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(spacing: 8) {
                             ForEach(ThemeStore.accents) { choice in
@@ -47,7 +48,7 @@ struct SettingsView: View {
                 }
 
                 GridRow {
-                    label("Arka plan")
+                    label(M.t("Arka plan", "Background"))
                     Picker("", selection: $theme.background) {
                         ForEach(BackgroundStyle.allCases) { Text($0.title).tag($0) }
                     }
@@ -57,7 +58,7 @@ struct SettingsView: View {
                 }
 
                 GridRow {
-                    label("Yoğunluk")
+                    label(M.t("Yoğunluk", "Intensity"))
                     HStack(spacing: 8) {
                         Image(systemName: "sun.min").foregroundStyle(.secondary)
                         Slider(value: $theme.ambientIntensity, in: 0.2...1)
@@ -70,10 +71,11 @@ struct SettingsView: View {
                 }
 
                 GridRow(alignment: .top) {
-                    label("Radyo").padding(.top, 1)
+                    label(M.t("Radyo", "Radio")).padding(.top, 1)
                     VStack(alignment: .leading, spacing: 4) {
-                        Toggle("Resmi sürümler önce, kullanıcı yüklemeleri sona", isOn: $curateRadio)
-                        Text("Klibi olan şarkılar şarkı sürümüyle çalar, aynı şarkı bir kez çalar. 20 dakikadan uzun setler ve mix'ler olduğu gibi kalır. Seçtiğin listelere ve albümlere dokunulmaz.")
+                        Toggle(M.t("Resmi sürümler önce, kullanıcı yüklemeleri sona", "Official versions first, user uploads last"), isOn: $curateRadio)
+                        Text(M.t("Klibi olan şarkılar şarkı sürümüyle çalar, aynı şarkı bir kez çalar. 20 dakikadan uzun setler ve mix'ler olduğu gibi kalır. Seçtiğin listelere ve albümlere dokunulmaz.",
+                                 "Songs with a music video play as the song version, and each song plays once. Sets and mixes longer than 20 minutes stay as they are. Playlists and albums you pick are left untouched."))
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -81,14 +83,14 @@ struct SettingsView: View {
                 }
 
                 GridRow(alignment: .top) {
-                    label("Geçmiş").padding(.top, 1)
+                    label(M.t("Geçmiş", "History")).padding(.top, 1)
                     VStack(alignment: .leading, spacing: 4) {
-                        Toggle("Dinleme geçmişini bu Mac'te tut", isOn: $keepHistory)
+                        Toggle(M.t("Dinleme geçmişini bu Mac'te tut", "Keep listening history on this Mac"), isOn: $keepHistory)
                         HStack(spacing: 10) {
-                            Text("Öneriler bundan öğrenir; Mac'ten çıkmaz. \(historySize)")
+                            Text(M.t("Öneriler bundan öğrenir; Mac'ten çıkmaz.", "Recommendations learn from it; it never leaves your Mac.") + " " + historySize)
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
-                            Button("Geçmişi Sil") {
+                            Button(M.t("Geçmişi Sil", "Erase History")) {
                                 ListeningLog.shared.erase()
                                 historyBytes = 0
                             }
@@ -99,11 +101,35 @@ struct SettingsView: View {
                 }
 
                 GridRow {
-                    label("Ses")
-                    Text(app.engine.streamInfo.isEmpty ? "Henüz bir şey çalınmadı" : app.engine.streamInfo)
+                    label(M.t("Ses", "Audio"))
+                    Text(app.engine.streamInfo.isEmpty ? M.t("Henüz bir şey çalınmadı", "Nothing played yet") : app.engine.streamInfo)
                         .font(.system(size: 12.5))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                }
+
+                GridRow(alignment: .top) {
+                    label(M.t("Dil", "Language")).padding(.top, 3)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Picker("", selection: $language) {
+                            Text(M.t("Sistem", "System")).tag("system")
+                            Text("Türkçe").tag("tr")
+                            Text("English").tag("en")
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .fixedSize()
+                        .onChange(of: language) { _, value in M.chosen = value == "system" ? nil : value }
+                        if language != (M.launchedChoice ?? "system") {
+                            HStack(spacing: 10) {
+                                Text(M.t("Uygulama yeniden başlayınca geçerli olur.", "Applies when the app restarts."))
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                Button(M.t("Yeniden Başlat", "Restart")) { M.relaunch() }
+                                    .controlSize(.small)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -115,15 +141,15 @@ struct SettingsView: View {
     }
 
     private var historySize: String {
-        historyBytes == 0 ? "Şu an boş."
-            : "Şu an " + ByteCountFormatter.string(fromByteCount: Int64(historyBytes), countStyle: .file) + "."
+        historyBytes == 0 ? M.t("Şu an boş.", "Empty now.")
+            : M.t("Şu an ", "Now ") + ByteCountFormatter.string(fromByteCount: Int64(historyBytes), countStyle: .file) + "."
     }
 
     private func label(_ text: String) -> some View {
         Text(text)
             .font(.system(size: 12.5, weight: .medium))
             .foregroundStyle(.secondary)
-            .frame(width: 72, alignment: .trailing)
+            .frame(width: 80, alignment: .trailing)
             .gridColumnAlignment(.trailing)
     }
 }
@@ -167,8 +193,8 @@ private struct PalettePreview: View {
                 .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 6) {
-                    Text("Çalan şarkı").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Color.brand)
-                    Text("Sanatçı").font(.system(size: 12)).foregroundStyle(.secondary)
+                    Text(M.t("Çalan şarkı", "Playing song")).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Color.brand)
+                    Text(M.t("Sanatçı", "Artist")).font(.system(size: 12)).foregroundStyle(.secondary)
                 }
                 GeometryReader { g in
                     ZStack(alignment: .leading) {

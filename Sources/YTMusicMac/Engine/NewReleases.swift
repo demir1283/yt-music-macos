@@ -159,11 +159,11 @@ enum NewReleases {
         let row5 = fresh(videos, limit: 30)
 
         let rows: [(String, String, [MediaItem], Int)] = [
-            ("followed", "Takip ettiğin sanatçılardan", row1, 1),
-            ("heard", "Dinlediğin sanatçılardan", row2, 3),
-            ("mine", "Senin için yeni", row3, 4),
-            ("youtube", "YouTube Music'te yeni", row4, 4),
-            ("videos", "Yeni müzik videoları", row5, 4),
+            ("followed", M.t("Takip ettiğin sanatçılardan", "From artists you follow"), row1, 1),
+            ("heard", M.t("Dinlediğin sanatçılardan", "From artists you listen to"), row2, 3),
+            ("mine", M.t("Senin için yeni", "New for you"), row3, 4),
+            ("youtube", M.t("YouTube Music'te yeni", "New on YouTube Music"), row4, 4),
+            ("videos", M.t("Yeni müzik videoları", "New music videos"), row5, 4),
         ]
         let sections = rows.filter { $0.2.count >= $0.3 }.map { id, title, items, _ in
             Shelf(id: "new-\(id)", title: title, strapline: nil, layout: "cards", items: items,

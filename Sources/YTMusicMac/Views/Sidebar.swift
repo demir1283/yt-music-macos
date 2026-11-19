@@ -11,7 +11,7 @@ struct Sidebar: View {
                 row(.home)
             }
 
-            Section("Keşfet") {
+            Section(M.t("Keşfet", "Explore")) {
                 row(.explore)
                 row(.charts)
                 row(.moods)
@@ -20,7 +20,7 @@ struct Sidebar: View {
             }
 
             if engine.loggedIn {
-                Section("Koleksiyon") {
+                Section(M.t("Koleksiyon", "Collection")) {
                     row(.library)
                     row(.liked)
                     row(.history)
@@ -41,7 +41,7 @@ struct Sidebar: View {
                     }
                 } header: {
                     HStack {
-                        Text("Çalma Listeleri")
+                        Text(M.t("Çalma Listeleri", "Playlists"))
                         Spacer()
                         Button { app.playlistEditor = .create(firstVideoId: nil) } label: {
                             Image(systemName: "plus")
@@ -50,7 +50,7 @@ struct Sidebar: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .help("Yeni çalma listesi")
+                        .help(M.t("Yeni çalma listesi", "New playlist"))
                     }
                 }
             }
@@ -140,7 +140,7 @@ struct AccountFooter: View {
                     Artwork(url: engine.account?.photo ?? engine.avatarURL, circle: true, placeholder: "person.fill")
                         .frame(width: 30, height: 30)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(engine.account?.name ?? "Hesabım")
+                        Text(engine.account?.name ?? M.t("Hesabım", "My Account"))
                             .font(.system(size: 12.5, weight: .semibold))
                             .lineLimit(1)
                         if let handle = engine.account?.handle, !handle.isEmpty {
@@ -165,24 +165,24 @@ struct AccountFooter: View {
             .onHover { hover = $0 }
             .popover(isPresented: $showMenu, arrowEdge: .top) {
                 VStack(alignment: .leading, spacing: 2) {
-                    menuButton("Kitaplığı Yenile", "arrow.clockwise") { Task { await engine.loadLibrary() } }
-                    menuButton("Bağlantıyı Yeniden Kur", "bolt.horizontal") { engine.reloadHome() }
+                    menuButton(M.t("Kitaplığı Yenile", "Refresh Library"), "arrow.clockwise") { Task { await engine.loadLibrary() } }
+                    menuButton(M.t("Bağlantıyı Yeniden Kur", "Reconnect"), "bolt.horizontal") { engine.reloadHome() }
                     Divider().padding(.vertical, 4)
-                    menuButton("Ayarlar…", "gearshape") { app.showSettings = true }
+                    menuButton(M.t("Ayarlar…", "Settings…"), "gearshape") { app.showSettings = true }
                     Divider().padding(.vertical, 4)
-                    menuButton("Oturumu Kapat", "rectangle.portrait.and.arrow.right") { engine.signOut() }
+                    menuButton(M.t("Oturumu Kapat", "Sign Out"), "rectangle.portrait.and.arrow.right") { engine.signOut() }
                 }
                 .padding(6)
                 .frame(width: 250)
             }
         } else if engine.booted {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Kitaplığın, beğendiklerin ve kişisel öneriler için oturum aç.")
+                Text(M.t("Kitaplığın, beğendiklerin ve kişisel öneriler için oturum aç.", "Sign in for your library, your likes and personal recommendations."))
                     .font(.system(size: 11.5))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Button { engine.showLogin() } label: {
-                    Text("Oturum Aç")
+                    Text(M.t("Oturum Aç", "Sign In"))
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)

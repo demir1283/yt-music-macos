@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Sürüm 2.5.0" src="https://img.shields.io/badge/s%C3%BCr%C3%BCm-2.5.0-ff2d55">
+  <img alt="Sürüm 2.6.0" src="https://img.shields.io/badge/s%C3%BCr%C3%BCm-2.6.0-ff2d55">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-000000?logo=apple">
   <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white">
   <img alt="MIT Lisansı" src="https://img.shields.io/badge/lisans-MIT-3c8dbc">
@@ -36,6 +36,10 @@ YouTube Music'in sunduklarına ek olarak uygulamanın kendine ait birkaç özell
 - **Mac'inde dinleme geçmişi:** yukarıdaki öneriler için kullanılır; kapatabilir veya silebilirsin.
 - **Uzun setler:** dinlediğin türlerde, normal YouTube'dan DJ setleri ve canlı kayıtlar.
 - **Ses çıkışı:** yalnızca bu uygulama için hoparlör, Bluetooth, USB veya ekran çıkışı seç; ya da AirPlay kullan.
+
+## 2.6'da yenilikler
+
+- **İngilizce arayüz:** uygulamanın tamamı Mac'inin diline (Türkçe veya İngilizce) ya da Ayarlar'da seçtiğin dile uyar.
 
 ## 2.5'te yenilikler
 
