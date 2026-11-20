@@ -9,7 +9,7 @@ APP_NAME="YTMusicMac"            # SwiftPM product / executable name
 DISPLAY_NAME="YT Music"      # name shown in Finder, Dock and the menu bar
 BUNDLE_ID="io.github.demir1283.ytmusic"
 APP="$DISPLAY_NAME.app"
-VERSION="2.6.0"              # shown in "About YT Music"
+VERSION="2.7.0"              # shown in "About YT Music"
 BUILD_NUMBER="2"
 
 if ! command -v swift >/dev/null 2>&1; then
@@ -66,6 +66,9 @@ for LANG_DIR in en tr; do
     > "$APP/Contents/Resources/$LANG_DIR.lproj/InfoPlist.strings"
 done
 
+# The folder the app is built from: the in-app updater runs git pull and build.sh there.
+SOURCE_XML="$(pwd | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')"
+
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -88,6 +91,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>NSHighResolutionCapable</key><true/>
   <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
+  <key>YTMSourcePath</key><string>$SOURCE_XML</string>
 </dict>
 </plist>
 PLIST

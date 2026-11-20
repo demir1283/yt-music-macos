@@ -1,0 +1,47 @@
+# Publishes a GitHub Release when a version tag (v1.2.3) is pushed, with that version's
+# section of CHANGELOG.md as its notes. People who watch the repository for releases get
+# notified, and the app's update check (Settings → Updates) sees the new version.
+# Uses only the token GitHub gives each run; no secrets are stored.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to publish, e.g. v2.6.0'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Notes from CHANGELOG.md
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          awk -v v="$VERSION" '
+            /^## / { if (found) exit; if (index($0, "## " v " ") == 1 || $0 == "## " v) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then echo "CHANGELOG.md has no section for $VERSION" >&2; exit 1; fi
+          printf '\n---\n**Updating:** the app offers new versions in its sidebar (from 2.7.0 on). By hand, in the project folder: `git pull && ./build.sh --install`\n' >> notes.md
+          cat notes.md
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" --verify-tag --title "YT Music ${TAG#v}" --notes-file notes.md
+          fi

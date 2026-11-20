@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Sürüm 2.6.0" src="https://img.shields.io/badge/s%C3%BCr%C3%BCm-2.6.0-ff2d55">
+  <img alt="Sürüm 2.7.0" src="https://img.shields.io/badge/s%C3%BCr%C3%BCm-2.7.0-ff2d55">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-000000?logo=apple">
   <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white">
   <img alt="MIT Lisansı" src="https://img.shields.io/badge/lisans-MIT-3c8dbc">
@@ -37,15 +37,13 @@ YouTube Music'in sunduklarına ek olarak uygulamanın kendine ait birkaç özell
 - **Uzun setler:** dinlediğin türlerde, normal YouTube'dan DJ setleri ve canlı kayıtlar.
 - **Ses çıkışı:** yalnızca bu uygulama için hoparlör, Bluetooth, USB veya ekran çıkışı seç; ya da AirPlay kullan.
 
-## 2.6'da yenilikler
+## Yenilikler
 
-- **İngilizce arayüz:** uygulamanın tamamı Mac'inin diline (Türkçe veya İngilizce) ya da Ayarlar'da seçtiğin dile uyar.
+- **2.7 — Uygulama içinden güncelleme:** yeni sürüm kenar çubuğunda görünür; tek tıkla indirilip derlenir. Bkz. [Güncelleme](#güncelleme).
+- **2.6 — İngilizce arayüz:** uygulamanın tamamı Mac'inin diline (Türkçe veya İngilizce) ya da Ayarlar'da seçtiğine uyar.
+- **2.5 — Yeni “Yeni çıkanlar” sayfası:** takip ettiğin ve dinlediğin sanatçıların son yayınları; ortak yüklemelerde her kanal bir bağlantı.
 
-## 2.5'te yenilikler
-
-- **Yeni “Yeni çıkanlar” sayfası:** takip ettiğin sanatçıların son 20 yayını, dinlediğin sanatçıların yeni müzikleri, senin için seçilenler, YouTube Music'teki yenilikler ve yeni müzik videoları.
-- **Ortak yüklemeler:** her kanalın adı kendi sayfasına giden bir bağlantıdır.
-- Ayrıca arama önerileri, daha net bir arama sayfası ve birçok küçük düzeltme; tam liste [değişiklik günlüğünde](CHANGELOG.md).
+Tam liste [değişiklik günlüğünde](CHANGELOG.md).
 
 ## Kurulum
 
@@ -59,6 +57,14 @@ cd yt-music-macos
 ```
 
 Sonra kenar çubuğunda **Giriş yap**'a tıklayıp Google ile giriş yap. macOS 14 veya üstü gerekir.
+
+### Güncelleme
+
+Uygulama açılışta ve günde bir kez GitHub'da yeni sürüm olup olmadığına bakar. Yeni sürüm çıktığında kenar çubuğunda görünür: **Güncelle**, uygulamayı derlediğin klasörde `git pull` ve `./build.sh` çalıştırır, ardından yeni sürüm açılır. Denetimi **Ayarlar → Güncelleme**'den kapatabilirsin.
+
+Elle güncellemek için proje klasöründe: `git pull && ./build.sh --install`. Her sürümde e-posta almak için bu sayfada **Watch → Custom → Releases**'ı seç.
+
+**2.6 veya öncesinden geliyorsan:** bir kez elle güncelle; 2.7'den sonra uygulama kendisi yapar.
 
 ## Neden yerel bir uygulama
 
@@ -84,7 +90,7 @@ Sonra kenar çubuğunda **Giriş yap**'a tıklayıp Google ile giriş yap. macOS
 ## Gizlilik
 
 - **Parolan uygulamaya hiç ulaşmaz.** Google'ın kendi sayfasında giriş yaparsın; uygulama yalnızca oturum çerezlerini Mac'inde tutar. **Çıkış yap** onları siler.
-- **Sunucu, analiz veya izleme yok.** Uygulama yalnızca YouTube / Google ve [LRCLIB](https://lrclib.net) (şarkı sözleri) ile konuşur.
+- **Sunucu, analiz veya izleme yok.** Uygulama yalnızca YouTube / Google, [LRCLIB](https://lrclib.net) (şarkı sözleri) ve GitHub (yeni sürüm var mı diye; Ayarlar'dan kapatılabilir) ile konuşur.
 - **Dinleme geçmişin Mac'inde kalır** (en fazla 4 MB). Ayarlar'dan kapatabilir veya silebilirsin.
 - **Bu depoda anahtar veya token yok.** Her şey çalışırken senin oturumundan okunur.
 

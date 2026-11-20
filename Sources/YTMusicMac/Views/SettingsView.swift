@@ -131,6 +131,11 @@ struct SettingsView: View {
                         }
                     }
                 }
+
+                GridRow(alignment: .top) {
+                    label(M.t("Güncelleme", "Updates")).padding(.top, 1)
+                    UpdateSettings()
+                }
             }
 
             PalettePreview()
@@ -211,5 +216,48 @@ private struct PalettePreview: View {
         .background(ContentBackground(includeField: true).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous)))
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.04)))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+    }
+}
+
+/// Settings → Updates: check GitHub for new versions, once a day or now. "Check Now"
+/// dims while it asks, then says what it found beside it.
+private struct UpdateSettings: View {
+    @ViewState var checking = false
+    @ViewState var result: String? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(M.t("Yeni sürümleri GitHub'da denetle", "Check GitHub for new versions"),
+                   isOn: Binding(get: { Updater.shared.enabled }, set: { Updater.shared.enabled = $0 }))
+            HStack(spacing: 10) {
+                Button(M.t("Şimdi Denetle", "Check Now")) { Task { await checkNow() } }
+                    .controlSize(.small)
+                    .disabled(checking)
+                if let result {
+                    Text(result)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: result)
+        }
+    }
+
+    @MainActor
+    private func checkNow() async {
+        checking = true
+        result = nil
+        let state = await Updater.shared.check(manual: true)
+        Updater.shared.dismissed = false
+        checking = false
+        if let release = Updater.shared.available {
+            result = M.t("\(release.version) çıktı; kenar çubuğundan güncelleyebilirsin.",
+                         "\(release.version) is out; update it from the sidebar.")
+        } else if state == .failed {
+            result = M.t("GitHub'a ulaşılamadı.", "Couldn't reach GitHub.")
+        } else {
+            result = M.t("Uygulama güncel!", "The app is up to date!")
+        }
     }
 }

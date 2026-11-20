@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.7.0 — 2026-11-20
+
+Updates from inside the app.
+
+- The app checks GitHub for a new version at launch and once a day. When there is one, a card above the account card shows it, with its notes; **Update** runs `git pull` and `build.sh` in the folder the app was built from, and the new version opens by itself. If a step fails, the old version keeps running and shows why.
+- Settings → Updates: turn the check off, or check now. The app menu has **Check for Updates…**.
+- Every version is now published as a GitHub Release, with its notes from this file: watch the repository for releases (Watch → Custom → Releases) to be notified by GitHub.
+
 ## 2.6.0 — 2026-11-19
 
 The whole app in English.

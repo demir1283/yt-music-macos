@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 2.6.0" src="https://img.shields.io/badge/version-2.6.0-ff2d55">
+  <img alt="Version 2.7.0" src="https://img.shields.io/badge/version-2.7.0-ff2d55">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-000000?logo=apple">
   <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white">
   <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-3c8dbc">
@@ -37,15 +37,13 @@ On top of what YouTube Music offers, the app has a few things of its own:
 - **Long sets:** DJ sets and live recordings from regular YouTube, in the genres you listen to.
 - **Sound output:** pick a speaker, Bluetooth, USB or display output for this app only, or use AirPlay.
 
-## What's new in 2.6
+## What's new
 
-- **English interface:** the whole app follows your Mac's language (English or Turkish), or the language you pick in Settings.
+- **2.7 — Updates from inside the app:** a new version shows up in the sidebar; one click pulls and builds it. See [Updating](#updating).
+- **2.6 — English interface:** the whole app follows your Mac's language (English or Turkish), or the one you pick in Settings.
+- **2.5 — A new “New releases” page:** the latest releases of the artists you follow and listen to; every channel of a joint upload is a link.
 
-## What's new in 2.5
-
-- **A new “New releases” page:** the last 20 releases of the artists you follow, new music from the artists you listen to, picks for you, what's new on YouTube Music and new music videos.
-- **Joint uploads:** every channel's name is a link to its own page.
-- Plus search suggestions, a clearer search page and many smaller fixes; the full list is in the [changelog](CHANGELOG.md).
+The full list is in the [changelog](CHANGELOG.md).
 
 ## Install
 
@@ -59,6 +57,14 @@ cd yt-music-macos
 ```
 
 Then click **Sign in** in the sidebar and log in with Google. Requires macOS 14 or later.
+
+### Updating
+
+The app checks GitHub for a new version at launch and once a day. When one is out, the sidebar shows it: **Update** runs `git pull` and `./build.sh` in the folder you built the app from, then the new version opens. You can turn the check off in **Settings → Updates**.
+
+By hand, in the project folder: `git pull && ./build.sh --install`. To get an e-mail for each version, use **Watch → Custom → Releases** on this page.
+
+**Coming from 2.6 or earlier:** update by hand once; from 2.7 on the app does it.
 
 ## Why a native app
 
@@ -84,7 +90,7 @@ Then click **Sign in** in the sidebar and log in with Google. Requires macOS 14 
 ## Privacy
 
 - **Your password never touches the app.** You sign in on Google's own page; the app keeps only the session cookies, on your Mac. **Sign out** removes them.
-- **No servers, analytics or tracking.** The app talks only to YouTube / Google and [LRCLIB](https://lrclib.net) (lyrics).
+- **No servers, analytics or tracking.** The app talks only to YouTube / Google, [LRCLIB](https://lrclib.net) (lyrics) and GitHub (to see whether a new version is out; can be turned off in Settings).
 - **Your listening history stays on your Mac** (at most 4 MB). Turn it off or erase it in Settings.
 - **No keys or tokens in this repository.** Everything is read at runtime from your own session.
 

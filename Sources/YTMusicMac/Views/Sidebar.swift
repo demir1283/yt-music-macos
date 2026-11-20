@@ -238,16 +238,21 @@ private struct SidebarFooterBar: ViewModifier {
             content
                 .scrollEdgeEffectStyle(.hard, for: .bottom)
                 .safeAreaBar(edge: .bottom) {
-                    AccountFooter()
-                        .padding(.horizontal, 10)
-                        .padding(.bottom, 10)
+                    footer
                 }
         } else {
             content.safeAreaInset(edge: .bottom) {
-                AccountFooter()
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 10)
+                footer
             }
         }
+    }
+
+    private var footer: some View {
+        VStack(spacing: 8) {
+            UpdateCard()
+            AccountFooter()
+        }
+        .padding(.horizontal, 10)
+        .padding(.bottom, 10)
     }
 }

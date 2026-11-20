@@ -39,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ThemeStore.shared.applyAppearance()
         StorageCleanup.run()
         _ = YTMusic.shared   // start loading YouTube Music right away
+        Updater.shared.start()
 
         // Space bar = play/pause, unless the user is typing somewhere.
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
@@ -218,6 +219,9 @@ struct AppCommands: Commands {
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {}
+        CommandGroup(after: .appInfo) {
+            Button(M.t("Güncellemeleri Denetle…", "Check for Updates…")) { Updater.shared.checkFromMenu() }
+        }
         CommandGroup(replacing: .appSettings) {
             Button(M.t("Ayarlar…", "Settings…")) { model.showSettings = true }
                 .keyboardShortcut(",", modifiers: .command)
