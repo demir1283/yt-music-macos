@@ -283,9 +283,9 @@ final class AppModel {
             return
         }
         if let ep = item.play {
-            engine.play(endpoint: ep, context: context)
+            engine.play(endpoint: ep, context: context, seed: item)
         } else if let videoId = item.videoId {
-            engine.play(endpoint: watchEndpoint(videoId: videoId, playlistId: context), context: nil)
+            engine.play(endpoint: watchEndpoint(videoId: videoId, playlistId: context), context: nil, seed: item)
         } else if let pl = item.playlistId {
             engine.play(endpoint: watchPlaylistEndpoint(pl), context: nil)
         } else if let id = item.browseId {

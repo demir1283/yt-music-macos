@@ -237,7 +237,7 @@ struct LyricsData: Codable {
 
 struct QueueEntry: Codable, Identifiable, Equatable {
     var index: Int
-    let title: String
+    var title: String
     let subtitle: String
     let duration: String
     let thumbnail: String?

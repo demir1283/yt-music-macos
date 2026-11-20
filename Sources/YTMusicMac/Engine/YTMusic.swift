@@ -406,7 +406,10 @@ final class YTMusic {
 
     // MARK: - Starting playback
 
-    func play(endpoint: String, context: String? = nil) {
+    /// `seed`: the card that was clicked. YouTube Music describes a regular YouTube upload
+    /// in its own words (another title, often one artist); the song that starts keeps the
+    /// title and artists the card showed, so the player and the card agree.
+    func play(endpoint: String, context: String? = nil, seed: MediaItem? = nil) {
         isLoading = true
         failuresInARow = 0
         playToken += 1
@@ -418,7 +421,11 @@ final class YTMusic {
                 let q: WatchQueue = try await call("watchQueue", ["endpoint": endpoint, "context": context ?? ""])
                 guard token == playToken else { return }
                 guard !q.items.isEmpty else { throw StreamError.noFormat }
-                let (list, current) = arranged(q, keep: min(max(0, q.current), q.items.count - 1))
+                var (list, current) = arranged(q, keep: min(max(0, q.current), q.items.count - 1))
+                if let seed, let vid = seed.videoId, list.indices.contains(current), list[current].videoId == vid {
+                    if !seed.title.isEmpty { list[current].title = seed.title }
+                    if !seed.artists.isEmpty { list[current].artists = seed.artists }
+                }
                 items = list
                 queueContinuation = q.continuation
                 retriedVideo = nil

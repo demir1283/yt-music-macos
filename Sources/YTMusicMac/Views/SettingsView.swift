@@ -1,6 +1,8 @@
 import SwiftUI
 
-/// Ayarlar: appearance, accent colour and background — one compact, scroll-free sheet.
+/// Settings: four groups (Appearance, Listening, Privacy, General) in the style of the
+/// system's own settings — a title and a short explanation on the left of each row, its
+/// control on the right, every control on the same edge.
 struct SettingsView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
@@ -9,10 +11,11 @@ struct SettingsView: View {
     @AppStorage(ListeningLog.enabledKey) private var keepHistory = true
     @ViewState var historyBytes = ListeningLog.shared.byteCount
     @ViewState var language = M.chosen ?? "system"
+    @ViewState var confirmErase = false
 
     var body: some View {
         @Bindable var theme = theme
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .firstTextBaseline) {
                 Text(M.t("Ayarlar", "Settings")).font(.system(size: 17, weight: .bold))
                 Spacer()
@@ -20,128 +23,113 @@ struct SettingsView: View {
                     .keyboardShortcut(.defaultAction)
             }
 
-            Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 16) {
-                GridRow {
-                    label(M.t("Görünüm", "Appearance"))
+            SettingsGroup(M.t("Görünüm", "Appearance")) {
+                SettingsRow(M.t("Tema", "Theme")) {
                     Picker("", selection: $theme.appearance) {
                         ForEach(AppearanceMode.allCases) { Text($0.title).tag($0) }
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .fixedSize()
+                    .segmented()
                 }
-
-                GridRow(alignment: .top) {
-                    label(M.t("Renk", "Colour")).padding(.top, 3)
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack(spacing: 8) {
-                            ForEach(ThemeStore.accents) { choice in
-                                AccentDot(choice: choice, selected: theme.accentID == choice.id) {
-                                    withAnimation(.easeInOut(duration: 0.2)) { theme.accentID = choice.id }
-                                }
+                RowDivider()
+                SettingsRow(M.t("Vurgu rengi", "Accent colour"), detail: theme.accent.name) {
+                    HStack(spacing: 4) {
+                        ForEach(ThemeStore.accents) { choice in
+                            AccentDot(choice: choice, selected: theme.accentID == choice.id) {
+                                withAnimation(.easeInOut(duration: 0.2)) { theme.accentID = choice.id }
                             }
                         }
-                        Text(theme.accent.name)
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(.secondary)
                     }
                 }
-
-                GridRow {
-                    label(M.t("Arka plan", "Background"))
+                RowDivider()
+                SettingsRow(M.t("Arka plan", "Background")) {
                     Picker("", selection: $theme.background) {
                         ForEach(BackgroundStyle.allCases) { Text($0.title).tag($0) }
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .fixedSize()
+                    .segmented()
                 }
-
-                GridRow {
-                    label(M.t("Yoğunluk", "Intensity"))
-                    HStack(spacing: 8) {
-                        Image(systemName: "sun.min").foregroundStyle(.secondary)
-                        Slider(value: $theme.ambientIntensity, in: 0.2...1)
-                            .controlSize(.small)
-                            .frame(width: 200)
-                        Image(systemName: "sun.max.fill").foregroundStyle(.secondary)
-                    }
-                    .disabled(!theme.background.isAnimated)
-                    .opacity(theme.background.isAnimated ? 1 : 0.4)
-                }
-
-                GridRow(alignment: .top) {
-                    label(M.t("Radyo", "Radio")).padding(.top, 1)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Toggle(M.t("Resmi sürümler önce, kullanıcı yüklemeleri sona", "Official versions first, user uploads last"), isOn: $curateRadio)
-                        Text(M.t("Klibi olan şarkılar şarkı sürümüyle çalar, aynı şarkı bir kez çalar. 20 dakikadan uzun setler ve mix'ler olduğu gibi kalır. Seçtiğin listelere ve albümlere dokunulmaz.",
-                                 "Songs with a music video play as the song version, and each song plays once. Sets and mixes longer than 20 minutes stay as they are. Playlists and albums you pick are left untouched."))
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                GridRow(alignment: .top) {
-                    label(M.t("Geçmiş", "History")).padding(.top, 1)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Toggle(M.t("Dinleme geçmişini bu Mac'te tut", "Keep listening history on this Mac"), isOn: $keepHistory)
-                        HStack(spacing: 10) {
-                            Text(M.t("Öneriler bundan öğrenir; Mac'ten çıkmaz.", "Recommendations learn from it; it never leaves your Mac.") + " " + historySize)
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                            Button(M.t("Geçmişi Sil", "Erase History")) {
-                                ListeningLog.shared.erase()
-                                historyBytes = 0
-                            }
-                            .controlSize(.small)
-                            .disabled(historyBytes == 0)
+                if theme.background.isAnimated {
+                    RowDivider().transition(.softReveal)
+                    SettingsRow(M.t("Desen yoğunluğu", "Pattern intensity")) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "sun.min").foregroundStyle(.secondary)
+                            Slider(value: $theme.ambientIntensity, in: 0.2...1)
+                                .controlSize(.small)
+                                .frame(width: 170)
+                            Image(systemName: "sun.max.fill").foregroundStyle(.secondary)
                         }
                     }
-                }
-
-                GridRow {
-                    label(M.t("Ses", "Audio"))
-                    Text(app.engine.streamInfo.isEmpty ? M.t("Henüz bir şey çalınmadı", "Nothing played yet") : app.engine.streamInfo)
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                GridRow(alignment: .top) {
-                    label(M.t("Dil", "Language")).padding(.top, 3)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Picker("", selection: $language) {
-                            Text(M.t("Sistem", "System")).tag("system")
-                            Text("Türkçe").tag("tr")
-                            Text("English").tag("en")
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-                        .fixedSize()
-                        .onChange(of: language) { _, value in M.chosen = value == "system" ? nil : value }
-                        if language != (M.launchedChoice ?? "system") {
-                            HStack(spacing: 10) {
-                                Text(M.t("Uygulama yeniden başlayınca geçerli olur.", "Applies when the app restarts."))
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.secondary)
-                                Button(M.t("Yeniden Başlat", "Restart")) { M.relaunch() }
-                                    .controlSize(.small)
-                            }
-                        }
-                    }
-                }
-
-                GridRow(alignment: .top) {
-                    label(M.t("Güncelleme", "Updates")).padding(.top, 1)
-                    UpdateSettings()
+                    .transition(.softReveal)
                 }
             }
 
-            PalettePreview()
+            SettingsGroup(M.t("Dinleme", "Listening")) {
+                SettingsRow(M.t("Radyoyu düzenle", "Tidy up radios"),
+                            detail: M.t("Resmî sürümler önce, her şarkı bir kez. Uzun setler ve seçtiğin listeler olduğu gibi kalır.",
+                                        "Official versions first, each song once. Long sets and the lists you pick stay as they are.")) {
+                    Toggle("", isOn: $curateRadio).switchStyle()
+                }
+                RowDivider()
+                SettingsRow(M.t("Ses kalitesi", "Audio quality")) {
+                    Text(app.engine.streamInfo.isEmpty ? M.t("Henüz bir şey çalınmadı", "Nothing played yet") : app.engine.streamInfo)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            SettingsGroup(M.t("Gizlilik", "Privacy")) {
+                SettingsRow(M.t("Dinleme geçmişi", "Listening history"),
+                            detail: M.t("Öneriler bundan öğrenir; Mac'ten çıkmaz.", "Recommendations learn from it; it never leaves your Mac.")
+                                + " " + historySize) {
+                    Toggle("", isOn: $keepHistory).switchStyle()
+                }
+                RowDivider()
+                SettingsRow(M.t("Geçmişi sil", "Erase history")) {
+                    Button(M.t("Sil…", "Erase…")) { confirmErase = true }
+                        .controlSize(.small)
+                        .disabled(historyBytes == 0)
+                        .confirmationDialog(M.t("Dinleme geçmişi silinsin mi?", "Erase your listening history?"),
+                                            isPresented: $confirmErase) {
+                            Button(M.t("Sil", "Erase"), role: .destructive) {
+                                ListeningLog.shared.erase()
+                                historyBytes = 0
+                            }
+                            Button(M.t("Vazgeç", "Cancel"), role: .cancel) {}
+                        } message: {
+                            Text(M.t("Öneriler sıfırdan öğrenmeye başlar. YouTube hesabındaki geçmişe dokunulmaz.",
+                                     "Recommendations start learning from scratch. The history in your YouTube account is left untouched."))
+                        }
+                }
+            }
+
+            SettingsGroup(M.t("Genel", "General")) {
+                SettingsRow(M.t("Dil", "Language"),
+                            detail: language != (M.launchedChoice ?? "system")
+                                ? M.t("Uygulama yeniden başlayınca geçerli olur.", "Applies when the app restarts.") : nil) {
+                    Picker("", selection: $language) {
+                        Text(M.t("Sistem", "System")).tag("system")
+                        Text("Türkçe").tag("tr")
+                        Text("English").tag("en")
+                    }
+                    .segmented()
+                    .onChange(of: language) { _, value in M.chosen = value == "system" ? nil : value }
+                }
+                if language != (M.launchedChoice ?? "system") {
+                    RowDivider().transition(.softReveal)
+                    SettingsRow(M.t("Yeniden başlat", "Restart")) {
+                        Button(M.t("Şimdi Yeniden Başlat", "Restart Now")) { M.relaunch() }
+                            .controlSize(.small)
+                    }
+                    .transition(.softReveal)
+                }
+                RowDivider()
+                UpdateRows()
+            }
         }
-        .padding(22)
-        .frame(width: 560)
+        .animation(.soft, value: theme.background)
+        .animation(.soft, value: language)
+        .padding(20)
+        .frame(width: 580)
         .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -149,13 +137,80 @@ struct SettingsView: View {
         historyBytes == 0 ? M.t("Şu an boş.", "Empty now.")
             : M.t("Şu an ", "Now ") + ByteCountFormatter.string(fromByteCount: Int64(historyBytes), countStyle: .file) + "."
     }
+}
 
-    private func label(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 12.5, weight: .medium))
-            .foregroundStyle(.secondary)
-            .frame(width: 80, alignment: .trailing)
-            .gridColumnAlignment(.trailing)
+/// A titled group of rows on a soft rounded panel.
+private struct SettingsGroup<Content: View>: View {
+    let title: String
+    let content: Content
+
+    init(_ title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 4)
+            VStack(spacing: 0) { content }
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.045)))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5))
+        }
+    }
+}
+
+/// Title (and a short explanation) on the left, the control on the right edge.
+private struct SettingsRow<Control: View>: View {
+    let title: String
+    let detail: String?
+    var detailColor: Color = .secondary
+    let control: Control
+
+    init(_ title: String, detail: String? = nil, detailColor: Color = .secondary,
+         @ViewBuilder control: () -> Control) {
+        self.title = title
+        self.detail = detail
+        self.detailColor = detailColor
+        self.control = control()
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 13))
+                if let detail {
+                    Text(detail)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(detailColor)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .transition(.opacity)
+                }
+            }
+            Spacer(minLength: 12)
+            control
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .frame(minHeight: 40)
+    }
+}
+
+private struct RowDivider: View {
+    var body: some View {
+        Divider().padding(.leading, 14)
+    }
+}
+
+private extension View {
+    func segmented() -> some View {
+        pickerStyle(.segmented).labelsHidden().fixedSize()
+    }
+
+    func switchStyle() -> some View {
+        toggleStyle(.switch).labelsHidden().controlSize(.small)
     }
 }
 
@@ -170,15 +225,15 @@ private struct AccentDot: View {
         Button(action: action) {
             Circle()
                 .fill(choice.color)
-                .frame(width: 20, height: 20)
+                .frame(width: 16, height: 16)
                 .overlay {
                     if selected {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 9, weight: .heavy))
+                            .font(.system(size: 8, weight: .heavy))
                             .foregroundStyle(.white)
                     }
                 }
-                .padding(3)
+                .padding(2.5)
                 .overlay(Circle().strokeBorder(choice.color.opacity(selected ? 0.9 : (hover ? 0.4 : 0)), lineWidth: 1.5))
                 .contentShape(Circle())
         }
@@ -188,60 +243,39 @@ private struct AccentDot: View {
     }
 }
 
-/// A miniature player bar in the current palette and background.
-private struct PalettePreview: View {
-    var body: some View {
-        HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(LinearGradient(colors: [Color.brand.opacity(0.9), Color.brand.scaledBrightness(0.5)],
-                                     startPoint: .topLeading, endPoint: .bottomTrailing))
-                .frame(width: 36, height: 36)
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 6) {
-                    Text(M.t("Çalan şarkı", "Playing song")).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Color.brand)
-                    Text(M.t("Sanatçı", "Artist")).font(.system(size: 12)).foregroundStyle(.secondary)
-                }
-                GeometryReader { g in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.primary.opacity(0.15))
-                        Capsule().fill(Color.brand).frame(width: g.size.width * 0.38)
-                    }
-                }
-                .frame(height: 3)
-            }
-            Image(systemName: "heart.fill").foregroundStyle(Color.brand)
-            Image(systemName: "pause.fill").font(.system(size: 15))
-        }
-        .padding(12)
-        .background(ContentBackground(includeField: true).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous)))
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.04)))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
-    }
-}
-
-/// Settings → Updates: check GitHub for new versions, once a day or now. "Check Now"
-/// dims while it asks, then says what it found beside it.
-private struct UpdateSettings: View {
+/// General → updates: automatic checking, then "Version x · Check Now". A check started
+/// here says what it found under the version, and a new version is installed right here,
+/// with its progress.
+private struct UpdateRows: View {
     @ViewState var checking = false
     @ViewState var result: String? = nil
+    @ViewState var upToDate = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Toggle(M.t("Yeni sürümleri GitHub'da denetle", "Check GitHub for new versions"),
-                   isOn: Binding(get: { Updater.shared.enabled }, set: { Updater.shared.enabled = $0 }))
-            HStack(spacing: 10) {
+        let updater = Updater.shared
+        VStack(spacing: 0) {
+            SettingsRow(M.t("Yeni sürümleri otomatik denetle", "Check for new versions automatically")) {
+                Toggle("", isOn: Binding(get: { Updater.shared.enabled }, set: { Updater.shared.enabled = $0 }))
+                    .switchStyle()
+            }
+            RowDivider()
+            SettingsRow(M.t("Sürüm \(Updater.current)", "Version \(Updater.current)"),
+                        detail: result, detailColor: upToDate ? .green : .secondary) {
                 Button(M.t("Şimdi Denetle", "Check Now")) { Task { await checkNow() } }
                     .controlSize(.small)
-                    .disabled(checking)
-                if let result {
-                    Text(result)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .transition(.opacity)
-                }
+                    .disabled(checking || updater.phase.isBusy)
             }
-            .animation(.easeOut(duration: 0.2), value: result)
+            if let release = updater.available, result != nil || updater.phase != .idle {
+                RowDivider().transition(.softReveal)
+                UpdateAction(release: release)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .transition(.softReveal)
+            }
         }
+        .animation(.soft, value: result)
+        .animation(.soft, value: updater.phase)
     }
 
     @MainActor
@@ -251,13 +285,24 @@ private struct UpdateSettings: View {
         let state = await Updater.shared.check(manual: true)
         Updater.shared.dismissed = false
         checking = false
+        upToDate = false
         if let release = Updater.shared.available {
-            result = M.t("\(release.version) çıktı; kenar çubuğundan güncelleyebilirsin.",
-                         "\(release.version) is out; update it from the sidebar.")
+            result = M.t("\(release.version) çıktı.", "\(release.version) is out.")
         } else if state == .failed {
             result = M.t("GitHub'a ulaşılamadı.", "Couldn't reach GitHub.")
         } else {
             result = M.t("Uygulama güncel!", "The app is up to date!")
+            upToDate = true
         }
     }
+}
+
+/// The app's one motion for things that appear or disappear: a short, eased fade with a
+/// small slide, never a jump.
+extension Animation {
+    static var soft: Animation { .smooth(duration: 0.35) }
+}
+
+extension AnyTransition {
+    static var softReveal: AnyTransition { .opacity.combined(with: .offset(y: -6)) }
 }

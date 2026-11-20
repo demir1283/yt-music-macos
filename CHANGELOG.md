@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.7.1 — 2026-11-20
+
+A simpler update, a clearer Settings.
+
+- Updating: the new version's card at the bottom of the sidebar has a single **Update** button; once pressed, the same card shows the download and build progress in percent, then the app restarts. An update started from Settings shows its progress in Settings.
+- Settings, redesigned in four groups — Appearance, Listening, Privacy, General — with a title and a short explanation on the left of each row and every control aligned on the right. Erasing the listening history asks first. "Check Now" dims while it checks, then says what it found under the version.
+- Rows that appear with a choice (pattern intensity, restart after a language change, the update's progress) open and close with a soft fade and slide.
+- A song started from a card keeps the title and artists the card showed: a regular YouTube upload (notifications, long sets) no longer turns into YouTube Music's own title with a single artist in the player and the side panel.
+
 ## 2.7.0 — 2026-11-20
 
 Updates from inside the app.

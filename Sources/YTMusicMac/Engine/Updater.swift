@@ -20,9 +20,19 @@ final class Updater {
 
     enum Phase: Equatable {
         case idle
-        case updating
+        /// Downloading and building: 0…1, read from git's and build.sh's output.
+        case updating(Double)
+        /// Built and installed; build.sh is about to quit this copy and open the new one.
+        case restarting
         /// The last lines of the update's output.
         case failed(String)
+
+        var isBusy: Bool {
+            switch self {
+            case .updating, .restarting: return true
+            default: return false
+            }
+        }
     }
 
     enum CheckState: Equatable {
@@ -46,6 +56,7 @@ final class Updater {
     }
 
     @ObservationIgnored private var timer: Timer?
+    @ObservationIgnored private var progressTimer: Timer?
 
     static var current: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
@@ -72,7 +83,7 @@ final class Updater {
         timer?.invalidate()
         timer = nil
         guard enabled else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
             Task { await self?.check() }
         }
         timer = Timer.scheduledTimer(withTimeInterval: 24 * 3600, repeats: true) { _ in
@@ -84,7 +95,7 @@ final class Updater {
     /// off and reports "up to date" / failures through `checkState`.
     @discardableResult
     func check(manual: Bool = false) async -> CheckState {
-        guard enabled || manual, phase != .updating else { return checkState }
+        guard enabled || manual, !phase.isBusy else { return checkState }
         if manual { checkState = .checking }
         var request = URLRequest(url: URL(string: "https://api.github.com/repos/\(Self.repo)/releases/latest")!)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
@@ -141,8 +152,8 @@ final class Updater {
     /// Pulls the new version and builds it. On success build.sh quits this copy and opens
     /// the new one; if a step fails, the old app keeps running and shows the output.
     func update() {
-        guard let folder = Self.sourceFolder, phase != .updating else { return }
-        phase = .updating
+        guard let folder = Self.sourceFolder, !phase.isBusy else { return }
+        phase = .updating(0)
         let install = Bundle.main.bundlePath.hasPrefix("/Applications/") ? " --install" : ""
         let logURL = folder.appendingPathComponent(".build/update.log")
         try? FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -166,6 +177,7 @@ final class Updater {
         task.terminationHandler = { process in
             let status = process.terminationStatus
             Task { @MainActor in
+                Updater.shared.progressTimer?.invalidate()
                 guard status != 0 else { return }
                 let output = (try? String(contentsOf: logURL, encoding: .utf8)) ?? ""
                 Updater.shared.phase = .failed(String(output.suffix(2000)))
@@ -177,7 +189,35 @@ final class Updater {
             EngineLog.write("Güncelleme başladı: \(available?.version ?? "?")")
         } catch {
             phase = .failed(error.localizedDescription)
+            return
         }
+        progressTimer?.invalidate()
+        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { _ in
+            Task { @MainActor in Updater.shared.readProgress(logURL) }
+        }
+    }
+
+    /// How far the update is, from the lines written so far: git pull, then swift build's
+    /// own "[compiled/total]" counter, then build.sh's packaging and installing steps.
+    private func readProgress(_ logURL: URL) {
+        guard case .updating(let old) = phase,
+              let text = try? String(contentsOf: logURL, encoding: .utf8) else { return }
+        var p = 0.02
+        if text.contains("Already up to date") || text.contains("Fast-forward") || text.contains("Updating ") { p = 0.08 }
+        if text.contains("Derleniyor") { p = 0.1 }
+        if let range = text.range(of: #"\[(\d+)/(\d+)\]"#, options: [.regularExpression, .backwards]) {
+            let nums = text[range].dropFirst().dropLast().split(separator: "/").compactMap { Double($0) }
+            if nums.count == 2, nums[1] > 0 { p = max(p, 0.1 + 0.75 * min(1, nums[0] / nums[1])) }
+        }
+        if text.contains("paketleniyor") { p = max(p, 0.88) }
+        if text.contains("İmzalanıyor") { p = max(p, 0.93) }
+        if text.contains("kopyalanıyor") { p = max(p, 0.97) }
+        if text.contains("✓ Hazır") {
+            progressTimer?.invalidate()
+            phase = .restarting
+            return
+        }
+        phase = .updating(max(old, p))
     }
 
     func resetFailure() { if case .failed = phase { phase = .idle } }

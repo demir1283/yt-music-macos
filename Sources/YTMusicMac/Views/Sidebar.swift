@@ -252,6 +252,8 @@ private struct SidebarFooterBar: ViewModifier {
             UpdateCard()
             AccountFooter()
         }
+        .animation(.soft, value: Updater.shared.available)
+        .animation(.soft, value: Updater.shared.dismissed)
         .padding(.horizontal, 10)
         .padding(.bottom, 10)
     }
