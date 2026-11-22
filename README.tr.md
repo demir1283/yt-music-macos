@@ -39,7 +39,7 @@ YouTube Music'in sunduklarına ek olarak uygulamanın kendine ait birkaç özell
 
 ## Yenilikler
 
-- **3.0 (hazırlanıyor) — Eşit ses ve uyku zamanlayıcı:** yüksek kaydedilmiş şarkılar diğerlerinin seviyesine indirilir; çalma belirli bir süre sonra ya da şarkı bitince durur; "Bana önerme" dediklerini geri alabilirsin.
+- **3.0 (hazırlanıyor):** şarkılar arasında eşit ses, uyku zamanlayıcı, dinleme özetin ve geri alınabilen beğenilmeyen içerik.
 - **2.7 — Uygulama içinden güncelleme:** yeni sürüm kenar çubuğunda görünür; tek tıkla indirilip derlenir. Bkz. [Güncelleme](#güncelleme).
 - **2.6 — İngilizce arayüz:** uygulamanın tamamı Mac'inin diline (Türkçe veya İngilizce) ya da Ayarlar'da seçtiğine uyar.
 - **2.5 — Yeni “Yeni çıkanlar” sayfası:** takip ettiğin ve dinlediğin sanatçıların son yayınları; ortak yüklemelerde her kanal bir bağlantı.

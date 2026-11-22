@@ -39,7 +39,7 @@ On top of what YouTube Music offers, the app has a few things of its own:
 
 ## What's new
 
-- **3.0 (in progress) — Even volume and a sleep timer:** loud songs are turned down to the level of the others; stop playback after a set time or at the end of the song; bring back what you hid with "Don't recommend".
+- **3.0 (in progress):** even volume between songs, a sleep timer, a summary of your listening, and disliked content you can bring back.
 - **2.7 — Updates from inside the app:** a new version shows up in the sidebar; one click pulls and builds it. See [Updating](#updating).
 - **2.6 — English interface:** the whole app follows your Mac's language (English or Turkish), or the one you pick in Settings.
 - **2.5 — A new “New releases” page:** the latest releases of the artists you follow and listen to; every channel of a joint upload is a link.

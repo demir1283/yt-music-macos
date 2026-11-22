@@ -119,3 +119,52 @@ final class LevelingTests: XCTestCase {
         XCTAssertEqual(YTMusic.gain(for: nil), 0.501, accuracy: 0.001)
     }
 }
+
+/// "Your listening": what counts, for which period, and who comes first.
+final class ListeningSummaryTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 1_790_000_000)
+    private var utc: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        return c
+    }
+
+    private func play(_ v: String, _ title: String, _ artists: [(String, String)], heard: Int, daysAgo: Double) -> ListeningLog.Play {
+        ListeningLog.Play(t: Int(now.timeIntervalSince1970 - daysAgo * 86_400), v: v, ti: title,
+                          ar: artists.map(\.0), ai: artists.map(\.1), ty: "MUSIC_VIDEO_TYPE_ATV",
+                          len: 200, heard: heard, at: heard, end: "done", src: "list")
+    }
+
+    private var plays: [ListeningLog.Play] {
+        [
+            play("a", "Song A", [("Artist 1", "UC1")], heard: 200, daysAgo: 1),
+            play("a", "Song A", [("Artist 1", "UC1")], heard: 200, daysAgo: 2),
+            play("b", "Song B", [("Artist 1", "UC1"), ("Artist 2", "UC2")], heard: 100, daysAgo: 3),
+            play("c", "Skipped", [("Artist 3", "UC3")], heard: 10, daysAgo: 1),     // under 30 s
+            play("d", "Old", [("Artist 4", "UC4")], heard: 150, daysAgo: 40),       // before the last 30 days
+        ]
+    }
+
+    func testLastThirtyDays() {
+        let s = ListeningSummary(plays: plays, period: .month, now: now, calendar: utc)
+        XCTAssertEqual(s.plays, 3)
+        XCTAssertEqual(s.seconds, 500)
+        XCTAssertEqual(s.songCount, 2)
+        XCTAssertEqual(s.artistCount, 2)
+        XCTAssertEqual(s.topArtists.first?.name, "Artist 1")
+        XCTAssertEqual(s.topArtists.first?.seconds, 500)
+        XCTAssertEqual(s.topArtists.last?.name, "Artist 2")      // a joint song counts for both
+        XCTAssertEqual(s.topSongs.first?.id, "a")
+        XCTAssertEqual(s.topSongs.first?.plays, 2)
+    }
+
+    func testAllTimeKeepsOlderPlays() {
+        let s = ListeningSummary(plays: plays, period: .all, now: now, calendar: utc)
+        XCTAssertEqual(s.plays, 4)
+        XCTAssertEqual(s.seconds, 650)
+    }
+
+    func testNothingHeard() {
+        XCTAssertTrue(ListeningSummary(plays: [], period: .week, now: now, calendar: utc).isEmpty)
+    }
+}

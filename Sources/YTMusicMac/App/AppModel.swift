@@ -25,6 +25,7 @@ enum SidebarItem: Hashable {
     case library
     case liked
     case history
+    case summary
     case playlist(BrowseTarget)
 
     var title: String {
@@ -39,6 +40,7 @@ enum SidebarItem: Hashable {
         case .library: return M.t("Kitaplık", "Library")
         case .liked: return M.t("Beğenilen Müzikler", "Liked Music")
         case .history: return M.t("Geçmiş", "History")
+        case .summary: return M.t("Dinleme Özetin", "Your Listening")
         case .playlist(let t): return t.title ?? M.t("Çalma Listesi", "Playlist")
         }
     }
@@ -55,6 +57,7 @@ enum SidebarItem: Hashable {
         case .library: return "square.stack"
         case .liked: return "heart.fill"
         case .history: return "clock.arrow.circlepath"
+        case .summary: return "chart.bar.xaxis"
         case .playlist: return "music.note.list"
         }
     }

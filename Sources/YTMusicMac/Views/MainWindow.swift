@@ -221,6 +221,8 @@ struct RootPage: View {
                 if let t = item.browseTarget { CollectionView(target: t) }
             case .newReleases:
                 NewReleasesView()
+            case .summary:
+                ListeningSummaryView()
             default:
                 if let t = item.browseTarget { BrowsePageView(target: t) }
             }

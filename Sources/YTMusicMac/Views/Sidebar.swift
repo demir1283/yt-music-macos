@@ -24,6 +24,7 @@ struct Sidebar: View {
                     row(.library)
                     row(.liked)
                     row(.history)
+                    row(.summary)
                 }
 
                 Section {
