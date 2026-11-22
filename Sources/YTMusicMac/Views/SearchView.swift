@@ -32,12 +32,15 @@ struct SearchView: View {
     }
 
     enum Kind: String {
-        case songs, videos, albums, artists, playlists, podcasts, hidden, other
+        /// `community`: playlists made by users. They join the playlists, after YouTube's
+        /// and YouTube Music's own.
+        case songs, videos, albums, artists, playlists, community, podcasts, hidden, other
 
         static func of(_ chipTitle: String) -> Kind {
             let t = chipTitle.lowercased(with: Locale(identifier: "tr_TR"))
-            // Community playlists and YouTube profiles aren't offered (as on the home page).
-            if t.contains("topluluk") || t.contains("community") || t.contains("profil") { return .hidden }
+            // YouTube profiles aren't offered.
+            if t.contains("profil") { return .hidden }
+            if t.contains("topluluk") || t.contains("community") { return .community }
             if t.contains("podcast") || t.contains("bölüm") || t.contains("episode") { return .podcasts }
             if t.contains("şarkı") || t.contains("song") { return .songs }
             if t.contains("video") { return .videos }
@@ -53,6 +56,7 @@ struct SearchView: View {
             case .artists: return 1
             case .albums: return 2
             case .playlists: return 3
+            case .community: return 3
             case .videos: return 4
             case .podcasts: return 5
             case .hidden, .other: return 6
@@ -65,7 +69,7 @@ struct SearchView: View {
             case .songs: return M.t("Şarkılar", "Songs")
             case .artists: return M.t("Sanatçılar", "Artists")
             case .albums: return M.t("Albümler", "Albums")
-            case .playlists: return M.t("Çalma listeleri", "Playlists")
+            case .playlists, .community: return M.t("Çalma listeleri", "Playlists")
             case .videos: return M.t("Videolar", "Videos")
             case .podcasts: return M.t("Podcast'ler", "Podcasts")
             case .hidden, .other: return ""
@@ -74,12 +78,12 @@ struct SearchView: View {
     }
 
     /// The filters shown: in a fixed order (songs, artists, albums, playlists, videos,
-    /// podcasts), without community playlists and profiles; "featured playlists" are just
-    /// "playlists".
+    /// podcasts), without profiles; "featured playlists" are just "playlists", and the
+    /// community playlists are in it rather than a filter of their own.
     private var chips: [FilterChip] {
         (results?.chips ?? [])
             .map { c in (c, Kind.of(c.title)) }
-            .filter { $0.1 != .hidden }
+            .filter { $0.1 != .hidden && $0.1 != .community }
             .enumerated()
             .sorted { ($0.element.1.order, $0.offset) < ($1.element.1.order, $1.offset) }
             .map { _, pair in
@@ -203,25 +207,29 @@ struct SearchView: View {
 
     @ViewBuilder
     private func overview(_ page: BrowsePage) -> some View {
+        // What the user said not to recommend leaves every part of the page at once.
+        let hidden = app.hiddenKeys
+        let keep: (MediaItem) -> Bool = { !hidden.contains($0.recommendationKey) }
         let top = page.sections.first { $0.layout == "top" }
         let songShelf = expanded.first { $0.kind == .songs }?.section
             ?? page.sections.first { $0.layout == "list" && $0.hasTracks }
-        let ytTop = top?.top
+        let ytTop = top?.top.flatMap { keep($0) ? $0 : nil }
         // The top result is always an official artist or channel: YouTube Music's own pick
         // when it is one, else the first artist among the results.
         let topItem = (ytTop?.isArtist == true ? ytTop : nil)
-            ?? page.sections.lazy.flatMap(\.items).first(where: \.isArtist)
-            ?? expanded.first(where: { $0.kind == .artists })?.section.items.first(where: \.isArtist)
+            ?? page.sections.lazy.flatMap(\.items).first(where: { $0.isArtist && keep($0) })
+            ?? expanded.first(where: { $0.kind == .artists })?.section.items.first(where: { $0.isArtist && keep($0) })
             ?? ytTop
         let headSongs = Array((artistSongs.isEmpty ? (songShelf?.items ?? top?.items ?? []) : artistSongs)
-            .filter { $0.isTrack && !Self.same($0, topItem) }
+            .filter { $0.isTrack && keep($0) && !Self.same($0, topItem) }
             .prefix(4))
         // What's already shown above doesn't come again in the rows below.
         let shownAbove = Set(headSongs.map(\.id))
         let shelves = Dictionary(expanded.map { ($0.kind, $0.section.items) }, uniquingKeysWith: { a, _ in a })
         let artists = Array((shelves[.artists] ?? []).filter { $0.isArtist && !Self.same($0, topItem) }.prefix(2))
         let albums = (shelves[.albums] ?? []).filter { !Self.same($0, topItem) }
-        let playlists = (shelves[.playlists] ?? []).filter { !Self.same($0, topItem) }
+        let playlists = Self.officialFirst((shelves[.playlists] ?? []) + (shelves[.community] ?? []))
+            .filter { !Self.same($0, topItem) }
         let videos = (shelves[.videos] ?? []).filter { !Self.same($0, topItem) && !shownAbove.contains($0.id) }.map(\.asWide)
 
         if topItem != nil || !headSongs.isEmpty {
@@ -302,6 +310,19 @@ struct SearchView: View {
         }
     }
 
+    /// Playlists from YouTube and YouTube Music first, then those users made; each once.
+    private static func officialFirst(_ items: [MediaItem]) -> [MediaItem] {
+        var seen = Set<String>()
+        let unique = items.filter { seen.insert($0.recommendationKey).inserted }
+        func official(_ i: MediaItem) -> Bool {
+            i.subtitle.components(separatedBy: " • ").contains { part in
+                let p = part.trimmingCharacters(in: .whitespaces).lowercased()
+                return p == "youtube music" || p == "youtube"
+            }
+        }
+        return unique.filter(official) + unique.filter { !official($0) }
+    }
+
     /// Whether two results are the same thing (the top result also comes in its own row).
     private static func same(_ a: MediaItem, _ b: MediaItem?) -> Bool {
         guard let b else { return false }
@@ -349,10 +370,21 @@ struct SearchView: View {
             guard !Task.isCancelled else { return }
             if chip != nil {
                 let main = r.sections.first { $0.layout != "top" && !$0.items.isEmpty }
-                let found = main?.items ?? []
+                var found = main?.items ?? []
+                var token = main?.continuation
+                // "Playlists": YouTube's and YouTube Music's own, then the ones users made
+                // ("Show more" goes on with the users' ones).
+                if Kind.of(chip?.title ?? "") == .playlists,
+                   let community = (results?.chips ?? r.chips).first(where: { Kind.of($0.title) == .community }),
+                   let page = try? await engine.search(q, params: community.params),
+                   let shelf = page.sections.first(where: { $0.layout != "top" && !$0.items.isEmpty }) {
+                    guard !Task.isCancelled else { return }
+                    found = Self.officialFirst(found + shelf.items)
+                    token = shelf.continuation
+                }
                 chipItems = Kind.of(chip?.title ?? "") == .songs
                     ? Self.artistFirst(artistSongs, found, artist: artistName) : found
-                chipToken = main?.continuation
+                chipToken = token
                 if results == nil { results = r }
                 return
             }

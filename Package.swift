@@ -15,5 +15,12 @@ let package = Package(
                 .linkedFramework("JavaScriptCore"),
             ]
         ),
+        // `swift test`: the app's pure logic (no network, no window). Run by GitHub
+        // Actions on every push; locally it needs Xcode's test tools.
+        .testTarget(
+            name: "YTMusicMacTests",
+            dependencies: ["YTMusicMac"],
+            path: "Tests/YTMusicMacTests"
+        ),
     ]
 )

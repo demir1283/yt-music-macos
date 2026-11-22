@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 2.7.1" src="https://img.shields.io/badge/version-2.7.1-ff2d55">
+  <img alt="Version 2.7.2" src="https://img.shields.io/badge/version-2.7.2-ff2d55">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-000000?logo=apple">
   <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white">
   <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-3c8dbc">
@@ -111,7 +111,7 @@ Stream address ──▶ yt-dlp-ejs (solves YouTube's stream challenge)
                  AVPlayer ──▶ chosen output or AirPlay
 ```
 
-If you edit `Tools/bridge.js`, copy it into `Sources/YTMusicMac/Engine/BridgeScript.swift` as well.
+If you edit `Tools/bridge.js`, `./build.sh` (or `Tools/gen-bridge.sh`) writes its Swift copy. Tests: `swift test` (needs Xcode) and `node --test "Tools/tests/*.test.mjs"`; GitHub Actions runs both on every push.
 </details>
 
 <details>

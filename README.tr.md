@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Sürüm 2.7.1" src="https://img.shields.io/badge/s%C3%BCr%C3%BCm-2.7.1-ff2d55">
+  <img alt="Sürüm 2.7.2" src="https://img.shields.io/badge/s%C3%BCr%C3%BCm-2.7.2-ff2d55">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-000000?logo=apple">
   <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white">
   <img alt="MIT Lisansı" src="https://img.shields.io/badge/lisans-MIT-3c8dbc">
@@ -111,7 +111,7 @@ Akış adresi ──▶ yt-dlp-ejs (YouTube'un akış sınamasını çözer)
                  AVPlayer ──▶ seçilen çıkış veya AirPlay
 ```
 
-`Tools/bridge.js` dosyasını düzenlersen `Sources/YTMusicMac/Engine/BridgeScript.swift` içine de kopyala.
+`Tools/bridge.js` dosyasını düzenlersen Swift kopyasını `./build.sh` (ya da `Tools/gen-bridge.sh`) yazar. Testler: `swift test` (Xcode gerekir) ve `node --test "Tools/tests/*.test.mjs"`; GitHub Actions her push'ta ikisini de çalıştırır.
 </details>
 
 <details>

@@ -19,7 +19,7 @@ final class DashToHLS: NSObject, AVAssetResourceLoaderDelegate {
     /// Queue the asset's resource loader calls back on.
     let queue = DispatchQueue(label: "ytmusic.hls")
 
-    private struct Piece {
+    struct Piece {
         let offset: Int
         let size: Int
         let seconds: Double
@@ -31,7 +31,7 @@ final class DashToHLS: NSObject, AVAssetResourceLoaderDelegate {
     private static let keep = 6
     /// Pieces after the first are joined into parts of at most this length: a shorter
     /// playlist (each line repeats the long address), same bytes.
-    private static let partSeconds = 30.0
+    static let partSeconds = 30.0
 
     /// Reads the file's index (one small ranged request) and returns the address of a
     /// playlist for it; nil when there is no index or it can't be read, and the file is
@@ -76,7 +76,7 @@ final class DashToHLS: NSObject, AVAssetResourceLoaderDelegate {
     // MARK: Index → playlist
 
     /// The pieces listed in a "sidx" box read from `fileOffset` of the file.
-    private static func pieces(sidx d: Data, at fileOffset: Int) -> [Piece]? {
+    static func pieces(sidx d: Data, at fileOffset: Int) -> [Piece]? {
         let b = [UInt8](d)
         func u32(_ i: Int) -> Int { b[i..<i + 4].reduce(0) { $0 << 8 | Int($1) } }
         guard b.count >= 32, b[4] == 0x73, b[5] == 0x69, b[6] == 0x64, b[7] == 0x78 else { return nil }   // "sidx"
@@ -117,7 +117,7 @@ final class DashToHLS: NSObject, AVAssetResourceLoaderDelegate {
 
     /// The first piece stays on its own (so playback starts after one ~10 s piece); the
     /// rest are joined, back to back, into parts of up to `partSeconds`.
-    private static func joined(_ pieces: [Piece]) -> [Piece] {
+    static func joined(_ pieces: [Piece]) -> [Piece] {
         guard var current = pieces.first else { return [] }
         var parts = [current]
         current = Piece(offset: 0, size: 0, seconds: 0)

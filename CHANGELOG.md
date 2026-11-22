@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.7.2 — 2026-11-22
+
+Search fixes, and every change now built and tested by GitHub.
+
+- Search: "Don't recommend" on a search result (a playlist, an album, a video) takes it off the page at once, as everywhere else. Every row of cards in the app now leaves out what you said not to recommend.
+- Lists: a song you dislike ("Dislike (don't recommend)") in an album or playlist now shows it — it fades and gets a thumbs-down mark, and is left out when the list plays. "Undo Dislike" brings it back.
+- Search: playlists made by users are back in the results, after YouTube's and YouTube Music's own — in the overview's Playlists row and under the Playlists filter, which no longer has a separate "Community playlists" twin.
+- For contributors: GitHub Actions builds the app and runs its tests on every push and pull request (Xcode 26, macOS 26). Swift tests cover the update check's version comparison, how songs and their video versions are matched, and reading an audio file's index; Node tests cover reading YouTube's subscription feed and the start-up language. `Tools/gen-bridge.sh` writes the Swift copy of `Tools/bridge.js` (build.sh runs it), so the two can't drift apart.
+
 ## 2.7.1 — 2026-11-20
 
 A simpler update, a clearer Settings.

@@ -1,0 +1,30 @@
+# Builds the app and runs its tests on every push and pull request, on a Mac with
+# Xcode 26 (the app uses macOS 26 APIs behind availability checks). Nothing is
+# published; this only says whether the code compiles and the tests pass.
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The embedded bridge matches Tools/bridge.js
+        run: |
+          ./Tools/gen-bridge.sh
+          git diff --exit-code Sources/YTMusicMac/Engine/BridgeScript.swift \
+            || { echo "::error::BridgeScript.swift is out of date: run Tools/gen-bridge.sh (build.sh does) and commit it."; exit 1; }
+
+      - name: Build
+        run: swift build -c release
+
+      - name: Swift tests
+        run: swift test
+
+      - name: Bridge tests
+        run: node --test "Tools/tests/*.test.mjs"

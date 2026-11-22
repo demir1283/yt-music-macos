@@ -122,7 +122,7 @@ final class AppModel {
     private(set) var hiddenKeys: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "hiddenRecommendations") ?? [])
 
     func hide(_ item: MediaItem) {
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.9)) {
+        withAnimation(.soft) {
             _ = hiddenKeys.insert(item.recommendationKey)
         }
         UserDefaults.standard.set(Array(hiddenKeys.prefix(1000)), forKey: "hiddenRecommendations")
@@ -132,7 +132,7 @@ final class AppModel {
     /// dislike takes it out of this and every later queue), and off every page.
     func notInterested(_ entry: QueueEntry) {
         guard let v = entry.videoId else { return }
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.9)) {
+        withAnimation(.soft) {
             engine.rate(videoId: v, status: "DISLIKE")
             _ = hiddenKeys.insert(v)
         }
@@ -140,7 +140,7 @@ final class AppModel {
     }
 
     func unhide(_ item: MediaItem) {
-        hiddenKeys.remove(item.recommendationKey)
+        withAnimation(.soft) { _ = hiddenKeys.remove(item.recommendationKey) }
         UserDefaults.standard.set(Array(hiddenKeys), forKey: "hiddenRecommendations")
     }
 

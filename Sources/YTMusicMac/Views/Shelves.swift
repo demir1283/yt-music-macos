@@ -95,25 +95,32 @@ struct CardCarousel: View {
     /// Width the row has on screen: the arrows show only when the cards don't all fit.
     @ViewState var viewport: CGFloat = 0
     @Environment(\.density) private var d
+    @Environment(AppModel.self) private var app
+
+    /// Without what the user said not to recommend: it leaves at once, wherever the row is.
+    private var items: [MediaItem] {
+        let hidden = app.hiddenKeys
+        return hidden.isEmpty ? section.items : section.items.filter { !hidden.contains($0.recommendationKey) }
+    }
 
     private var index: Int {
-        guard let p = position, let i = section.items.firstIndex(where: { $0.id == p }) else { return 0 }
+        guard let p = position, let i = items.firstIndex(where: { $0.id == p }) else { return 0 }
         return i
     }
 
     var body: some View {
         // Mixed shelves (square covers + 16:9 videos) share one image height so every
         // card's title sits on the same line and nothing gets clipped.
-        let mixed = section.items.contains { $0.wide }
+        let mixed = items.contains { $0.wide }
         let imageH: CGFloat = mixed ? d.cardMixed : d.card
-        let content = section.items.reduce(CGFloat(0)) { $0 + ($1.wide ? imageH * 16 / 9 : imageH) }
-            + d.cardGap * CGFloat(max(section.items.count - 1, 0)) + d.pad * 2
+        let content = items.reduce(CGFloat(0)) { $0 + ($1.wide ? imageH * 16 / 9 : imageH) }
+            + d.cardGap * CGFloat(max(items.count - 1, 0)) + d.pad * 2
         let overflows = content > viewport + 1
         VStack(alignment: .leading, spacing: d.v(8, 10)) {
             ShelfHeader(section: section)
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: d.cardGap) {
-                    ForEach(section.items) { item in
+                    ForEach(items) { item in
                         ItemCard(item: item, width: item.wide ? imageH * 16 / 9 : imageH, imageHeight: imageH)
                             .id(item.id)
                             .transition(.scale(scale: 0.85).combined(with: .opacity))
@@ -136,7 +143,7 @@ struct CardCarousel: View {
                 }
             }
             .overlay(alignment: .trailing) {
-                if hover && overflows && index < section.items.count - 3 {
+                if hover && overflows && index < items.count - 3 {
                     CarouselArrow(system: "chevron.right") { move(3) }
                         .padding(.trailing, 10)
                 }
@@ -146,10 +153,10 @@ struct CardCarousel: View {
     }
 
     private func move(_ delta: Int) {
-        guard !section.items.isEmpty else { return }
-        let target = max(0, min(section.items.count - 1, index + delta))
+        guard !items.isEmpty else { return }
+        let target = max(0, min(items.count - 1, index + delta))
         withAnimation(.easeInOut(duration: 0.4)) {
-            position = section.items[target].id
+            position = items[target].id
         }
     }
 }
@@ -527,6 +534,10 @@ struct TrackRow: View {
 
     private var isCurrent: Bool { item.videoId != nil && app.engine.track?.videoId == item.videoId }
 
+    /// Said "don't recommend" / disliked: the song stays in its list, faded and marked, and
+    /// is left out when the list plays (unless clicked itself).
+    private var isHidden: Bool { item.isTrack && app.hiddenKeys.contains(item.recommendationKey) }
+
     var body: some View {
         HStack(spacing: 12) {
             if index != nil || !showArtwork {
@@ -557,6 +568,13 @@ struct TrackRow: View {
                     .foregroundStyle(isCurrent ? Color.brand : Color.primary)
                     .lineLimit(1)
                 if item.explicit { ExplicitBadge() }
+                if isHidden {
+                    Image(systemName: "hand.thumbsdown.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .help(M.t("Beğenmedin: bu liste çalınırken atlanır.", "Disliked: skipped when this list plays."))
+                        .transition(.softReveal)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -600,6 +618,8 @@ struct TrackRow: View {
             .frame(width: 22)
             .opacity(hover ? 1 : 0)
         }
+        .opacity(isHidden && !hover ? 0.45 : 1)
+        .animation(.soft, value: isHidden)
         .padding(.horizontal, 10)
         .frame(height: showArtwork ? d.trackRow : d.trackRowPlain)
         .background(
