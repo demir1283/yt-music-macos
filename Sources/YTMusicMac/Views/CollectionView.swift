@@ -15,6 +15,7 @@ struct CollectionView: View {
     @ViewState var actionError: String? = nil
 
     private var isAlbum: Bool { target.kind == "album" }
+    private var isMix: Bool { target.kind == "mix" }
 
     /// Checks again on ⌘R and when the app comes back to the screen.
     private var taskKey: String {
@@ -140,6 +141,7 @@ struct CollectionView: View {
 
     private var typeLabel: String {
         if isAlbum, let first = page?.header?.subtitle.components(separatedBy: " • ").first, !first.isEmpty { return first }
+        if isMix { return "Mix" }
         return target.kind == "podcast" ? "Podcast" : M.t("Çalma Listesi", "Playlist")
     }
 
@@ -158,6 +160,13 @@ struct CollectionView: View {
                     ZStack {
                         Rectangle().fill(Palette.likedGradient)
                         Image(systemName: "heart.fill").font(.system(size: d.headerArt / 3)).foregroundStyle(.white)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                } else if isMix {
+                    // The same cover as the mix's card: the artist's picture with its band.
+                    ZStack(alignment: .bottomLeading) {
+                        Artwork(url: page?.header?.thumbnail, cornerRadius: 10, placeholder: "music.note.list")
+                        MixBand(title: title, width: d.headerArt)
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 } else if let artist = target.coverArtist, !artist.isEmpty {
@@ -248,7 +257,7 @@ struct CollectionView: View {
     private func shufflePlay() {
         if let ep = page?.header?.shuffle {
             app.engine.play(endpoint: ep)
-        } else if let pl = contextPlaylist {
+        } else if let pl = contextPlaylist, !isMix {
             app.engine.play(endpoint: watchPlaylistEndpoint(pl, params: "wAEB"))
         } else {
             playAll()

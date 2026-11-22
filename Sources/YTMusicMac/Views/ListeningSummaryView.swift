@@ -1,22 +1,31 @@
 import SwiftUI
 
-/// Sidebar → Your listening: the on-device history summed up for a period. Everything is
-/// computed on this Mac (ListeningSummary); nothing is sent anywhere.
+/// Sidebar → Your listening: the history kept on this Mac, summed up for a period, in the
+/// app's own layout — period chips as at the top of the home page, a headline like the
+/// home page's greeting, the top artists and channels as cards with their own pictures,
+/// and the top songs as a regular song list (play, right-click menu, the playing song
+/// highlighted). Everything is computed on this Mac (ListeningSummary).
 struct ListeningSummaryView: View {
     @Environment(AppModel.self) private var app
     @Environment(\.density) private var d
     @ViewState var period: ListeningSummary.Period = .month
     @ViewState var summary: ListeningSummary? = nil
+    /// Artist and channel pictures (their own square avatars), by channel id.
+    @ViewState var photos: [String: String] = [:]
+    /// The song list shows 20, then all 50 on "Show More".
+    @ViewState var allSongs = false
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: d.sectionGap) {
-                Picker("", selection: $period) {
-                    ForEach(ListeningSummary.Period.allCases) { Text($0.title).tag($0) }
+            LazyVStack(alignment: .leading, spacing: d.sectionGap) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(ListeningSummary.Period.allCases) { p in
+                            ChipButton(title: p.title, isOn: period == p) { period = p }
+                        }
+                    }
+                    .padding(.horizontal, d.pad)
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
 
                 if let summary {
                     if summary.isEmpty {
@@ -31,10 +40,9 @@ struct ListeningSummaryView: View {
                             .transition(.softReveal)
                     } else {
                         content(summary)
-                            .transition(.softReveal)
                     }
                 } else {
-                    ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(.top, 40)
+                    PageSkeleton(layout: .tiles)
                 }
 
                 Text(M.t("Bu özet yalnızca bu Mac'teki dinleme geçmişinden hesaplanır; hiçbir yere gönderilmez. En az 30 saniye dinlenen şarkılar sayılır.",
@@ -42,55 +50,96 @@ struct ListeningSummaryView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, d.pad)
             }
-            .padding(.horizontal, d.pad)
             .padding(.vertical, d.pageTop)
-            .animation(.soft, value: summary?.seconds)
         }
         .navigationTitle(M.t("Dinleme özetin", "Your listening"))
         .pageChrome()
         .task(id: period) {
             let s = await ListeningSummary.load(period)
             withAnimation(.soft) { summary = s }
+            await loadPhotos(for: s)
         }
     }
 
     @ViewBuilder
     private func content(_ s: ListeningSummary) -> some View {
-        HStack(spacing: 12) {
-            StatTile(value: Self.duration(s.seconds), label: M.t("dinleme", "listened"), icon: "headphones")
-            StatTile(value: "\(s.songCount)", label: M.t("farklı şarkı", "different songs"), icon: "music.note")
-            StatTile(value: "\(s.artistCount)", label: M.t("farklı sanatçı ve kanal", "different artists and channels"), icon: "person.2")
+        // Headline, like the home page's greeting.
+        VStack(alignment: .leading, spacing: 4) {
+            Text(headline(s))
+                .font(.system(size: d.v(22, 26), weight: .bold))
+                .contentTransition(.numericText())
+            Text(M.t("\(s.songCount) farklı şarkı · \(s.artistCount) sanatçı ve kanal · \(s.plays) dinleme",
+                     "\(s.songCount) different songs · \(s.artistCount) artists and channels · \(s.plays) plays"))
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .contentTransition(.numericText())
+        }
+        .padding(.horizontal, d.pad)
+        .animation(.soft, value: s.seconds)
+
+        // Top artists and channels: the app's square cards, with their own pictures.
+        VStack(alignment: .leading, spacing: d.v(8, 10)) {
+            SectionTitle(title: M.t("En çok dinlediğin sanatçılar ve kanallar", "Your top artists and channels"))
+                .padding(.horizontal, d.pad)
+            CardCarousel(section: Shelf(id: "summary-artists-\(period.rawValue)", title: "", strapline: nil, layout: "cards",
+                                        items: s.topArtists.map(artistItem), more: nil, continuation: nil, top: nil))
         }
 
-        HStack(alignment: .top, spacing: d.v(20, 32)) {
-            VStack(alignment: .leading, spacing: 10) {
-                SectionTitle(title: M.t("En çok dinlediğin sanatçılar ve kanallar", "Your top artists and channels"))
-                let top = s.topArtists.first?.seconds ?? 1
-                ForEach(Array(s.topArtists.enumerated()), id: \.element.id) { i, a in
-                    ArtistBar(rank: i + 1, artist: a, fraction: a.seconds / max(top, 1), time: Self.duration(a.seconds)) {
-                        if let id = a.channelId, id.hasPrefix("UC") { app.openArtist(id) }
-                    }
+        // Top songs: a regular song list.
+        VStack(alignment: .leading, spacing: d.v(8, 10)) {
+            SectionTitle(title: M.t("En çok dinlediğin şarkılar", "Your top songs"))
+                .padding(.horizontal, d.pad)
+            TrackList(items: (allSongs ? s.topSongs : Array(s.topSongs.prefix(20))).map(songItem),
+                      numbered: true, showArtwork: true, showAlbum: false, showHeader: false)
+                .padding(.horizontal, d.pad)
+                .animation(.soft, value: allSongs)
+            if s.topSongs.count > 20 {
+                Button(allSongs ? M.t("Daha Az Göster", "Show Less") : M.t("Daha Fazla Göster", "Show More")) {
+                    withAnimation(.soft) { allSongs.toggle() }
                 }
+                .buttonStyle(.link)
+                .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-
-            VStack(alignment: .leading, spacing: 10) {
-                SectionTitle(title: M.t("En çok dinlediğin şarkılar", "Your top songs"))
-                VStack(spacing: 0) {
-                    ForEach(Array(s.topSongs.enumerated()), id: \.element.id) { i, song in
-                        SongLine(rank: i + 1, song: song,
-                                 detail: M.t("\(song.plays) kez · \(Self.duration(song.seconds))",
-                                             "\(song.plays)× · \(Self.duration(song.seconds))"),
-                                 isCurrent: app.engine.track?.videoId == song.id) {
-                            // As everywhere in the app: the song, then YouTube Music's radio from it.
-                            app.engine.play(endpoint: watchEndpoint(videoId: song.id))
-                        }
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+    }
+
+    private func headline(_ s: ListeningSummary) -> String {
+        let time = Self.duration(s.seconds)
+        switch period {
+        case .week: return M.t("Son 7 günde \(time) dinledin", "\(time) of listening in the last 7 days")
+        case .month: return M.t("Son 30 günde \(time) dinledin", "\(time) of listening in the last 30 days")
+        case .year: return M.t("Bu yıl \(time) dinledin", "\(time) of listening this year")
+        case .all: return M.t("Toplam \(time) dinledin", "\(time) of listening in all")
+        }
+    }
+
+    /// A card that opens the artist's (or channel's) page; its time under the name.
+    private func artistItem(_ a: ListeningSummary.Artist) -> MediaItem {
+        MediaItem(uid: "summary-artist-\(a.id)", kind: "artist", title: a.name, subtitle: Self.duration(a.seconds),
+                  thumbnail: a.channelId.flatMap { photos[$0] }, videoId: nil, browseId: a.channelId, params: nil,
+                  playlistId: nil, artists: [], album: nil, duration: nil, explicit: false, play: nil,
+                  wide: false, color: nil)
+    }
+
+    /// A song row; how often it was played stands where a list shows the length.
+    private func songItem(_ song: ListeningSummary.Song) -> MediaItem {
+        MediaItem(uid: "summary-song-\(song.id)", kind: "song", title: song.title, subtitle: song.artist,
+                  thumbnail: song.cover ?? "https://i.ytimg.com/vi/\(song.id)/hqdefault.jpg",
+                  videoId: song.id, browseId: nil, params: nil, playlistId: nil,
+                  artists: zip(song.artists, song.artistIds).map { ArtistRef(name: $0.0, id: $0.1) },
+                  album: nil, duration: M.t("\(song.plays) kez", "\(song.plays)×"), explicit: false,
+                  play: watchEndpoint(videoId: song.id), wide: false, color: nil)
+    }
+
+    /// The top artists' and channels' own square pictures (not their pages' banners).
+    private func loadPhotos(for s: ListeningSummary) async {
+        let ids = s.topArtists.compactMap(\.channelId).filter { $0.hasPrefix("UC") }
+        guard ids.contains(where: { photos[$0] == nil }) else { return }
+        let found = await app.engine.channelPhotos(ids)
+        guard !Task.isCancelled else { return }
+        withAnimation(.soft) { photos.merge(found) { _, new in new } }
     }
 
     /// "12 sa 30 dk", "45 dk", "1 dk".
@@ -99,117 +148,5 @@ struct ListeningSummaryView: View {
         let h = minutes / 60, m = minutes % 60
         if h > 0 { return M.t("\(h) sa \(m) dk", "\(h) h \(m) min") }
         return M.t("\(max(m, seconds > 0 ? 1 : 0)) dk", "\(max(m, seconds > 0 ? 1 : 0)) min")
-    }
-}
-
-private struct StatTile: View {
-    let value: String
-    let label: String
-    let icon: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.brand)
-            Text(value)
-                .font(.system(size: 22, weight: .bold))
-                .monospacedDigit()
-                .contentTransition(.numericText())
-            Text(label)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.045)))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5))
-    }
-}
-
-private struct ArtistBar: View {
-    let rank: Int
-    let artist: ListeningSummary.Artist
-    let fraction: Double
-    let time: String
-    let action: () -> Void
-    @ViewState var hover = false
-
-    var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("\(rank). \(artist.name)")
-                        .font(.system(size: 13, weight: rank == 1 ? .semibold : .regular))
-                        .lineLimit(1)
-                    Spacer()
-                    Text(time)
-                        .font(.system(size: 11.5).monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-                GeometryReader { g in
-                    Capsule()
-                        .fill(Color.brand.opacity(hover ? 1 : 0.8))
-                        .frame(width: max(4, g.size.width * fraction))
-                }
-                .frame(height: 5)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hover = $0 }
-        .animation(.soft, value: fraction)
-    }
-}
-
-/// A top song: rank, cover, title, artist, how often and how long. As in every song
-/// list: the cover's ▶︎ (or a double-click) plays it, followed by YouTube Music's radio
-/// from it; the right-click menu says so.
-private struct SongLine: View {
-    let rank: Int
-    let song: ListeningSummary.Song
-    let detail: String
-    let isCurrent: Bool
-    let play: () -> Void
-    @ViewState var hover = false
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Text("\(rank)")
-                .font(.system(size: 12).monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: 18)
-            ZStack {
-                Artwork(url: song.cover, cornerRadius: 4, circle: false)
-                if hover {
-                    Color.black.opacity(0.4).clipShape(RoundedRectangle(cornerRadius: 4))
-                    Image(systemName: "play.fill").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
-                }
-            }
-            .frame(width: 34, height: 34)
-            .contentShape(Rectangle())
-            .onTapGesture(perform: play)
-            .help(M.t("Çal (ardından bu şarkının radyosu)", "Play (then this song's radio)"))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(song.title)
-                    .font(.system(size: 13, weight: isCurrent ? .semibold : .regular))
-                    .foregroundStyle(isCurrent ? Color.brand : Color.primary)
-                    .lineLimit(1)
-                Text(song.artist).font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
-            }
-            Spacer(minLength: 8)
-            Text(detail)
-                .font(.system(size: 11).monospacedDigit())
-                .foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 5)
-        .padding(.horizontal, 6)
-        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.primary.opacity(hover ? 0.07 : 0)))
-        .contentShape(Rectangle())
-        .onHover { hover = $0 }
-        .onTapGesture(count: 2, perform: play)
-        .contextMenu {
-            Button(M.t("Şarkı Radyosunu Başlat", "Start Song Radio"), action: play)
-        }
     }
 }

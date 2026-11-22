@@ -9,6 +9,10 @@ struct BrowseTarget: Hashable {
     /// Set on an artist's popular songs list: the page gets a made cover with the artist's
     /// name ("<Artist> · Popüler şarkılar") instead of a picture.
     var coverArtist: String? = nil
+    /// A mix's page (kind "mix", `params` its play endpoint): its cover and subtitle,
+    /// which no YouTube Music page gives.
+    var cover: String? = nil
+    var about: String? = nil
 
     static let likedSongs = BrowseTarget(browseId: "VLLM", params: nil, kind: "playlist", title: M.t("Beğenilen Müzikler", "Liked Music"))
 }
@@ -241,14 +245,19 @@ final class AppModel {
     /// What a click on a cover does, everywhere in the app: it opens the item's page — an
     /// artist's, an album's, a playlist's; a song opens its album, an artist's radio the
     /// artist. A song or video without a known album is looked up on YouTube Music: its
-    /// album, else its artist's or channel's page. Only mixes (no page at all) play.
-    /// Playing is the play button's job.
+    /// album, else its artist's or channel's page. A mix (no page on YouTube Music) opens
+    /// the app's own page of its songs. Playing is the play button's job.
     func open(_ item: MediaItem) {
         if item.kind == "artistradio", let id = item.browseId, id.hasPrefix("UC") {
             openArtist(id)
             return
         }
-        // Mixes (the app's artist mixes, YouTube Mixes) have no page: they start playing.
+        // Mixes (the app's artist mixes, YouTube Mixes): the songs the mix starts with.
+        if item.kind == "mix", let ep = item.play ?? item.playlistId.map({ watchPlaylistEndpoint($0) }) {
+            push(BrowseTarget(browseId: item.playlistId ?? item.uid, params: ep, kind: "mix", title: item.title,
+                              cover: item.thumbnail, about: item.subtitle))
+            return
+        }
         if item.kind == "mix" || item.kind == "artistradio" {
             play(item)
             return
@@ -443,9 +452,26 @@ final class AppModel {
         let key = PageCache.page(target)
         let cache = PageCache.shared
         if !force, cache.isFresh(key), let kept = cache.value(key, as: BrowsePage.self) { return kept }
-        let page = target.browseId == "FEmusic_podcasts"
-            ? try await podcastsPage()
-            : try await engine.browse(target.browseId, params: target.params)
+        var page: BrowsePage
+        if target.kind == "mix" {
+            page = try await engine.mixPage(target)
+        } else if target.browseId == "FEmusic_podcasts" {
+            page = try await podcastsPage()
+        } else {
+            page = try await engine.browse(target.browseId, params: target.params)
+        }
+        // A mix YouTube Music builds as it plays (Supermix'im…): its page comes without songs,
+        // so they come from the queue it would play, under the page's own title and cover.
+        if target.kind != "mix", target.browseId.hasPrefix("VLRD"),
+           !page.sections.contains(where: { $0.layout == "list" && $0.hasTracks }) {
+            let list = String(target.browseId.dropFirst(2))
+            let h = page.header
+            let mix = BrowseTarget(browseId: list, params: h?.play ?? watchPlaylistEndpoint(list), kind: "mix",
+                                   title: h?.title ?? target.title, cover: h?.thumbnail, about: h?.subtitle)
+            if let songs = try? await engine.mixPage(mix), songs.sections.contains(where: \.hasTracks) {
+                page = songs
+            }
+        }
         cache.store(page, for: key, lifetime: PageCache.lifetime(for: target, page))
         return page
     }

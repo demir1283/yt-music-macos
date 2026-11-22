@@ -1415,9 +1415,49 @@ final class YTMusic {
         try await call("globalCharts")
     }
 
+    /// Channels' own square pictures (their avatars on regular YouTube), by channel id;
+    /// kept in memory while the app runs. Channels without one are left out.
+    func channelPhotos(_ ids: [String]) async -> [String: String] {
+        let missing = Array(Set(ids.filter { $0.hasPrefix("UC") && channelPhotoCache[$0] == nil }))
+        if !missing.isEmpty,
+           let found = try? await call("channelPhotos", ["ids": missing], as: [String: String?].self) {
+            for id in missing { channelPhotoCache[id] = (found[id] ?? nil) ?? "" }
+        }
+        return ids.reduce(into: [:]) { out, id in
+            if let url = channelPhotoCache[id], !url.isEmpty { out[id] = url }
+        }
+    }
+
+    /// "" for a channel looked up without a picture (so it isn't asked again).
+    @ObservationIgnored private var channelPhotoCache: [String: String] = [:]
+
     /// What regular YouTube suggests next to a video.
     func youtubeRelated(_ videoId: String) async throws -> YouTubeFeed {
         try await call("ytRelated", ["videoId": videoId])
+    }
+
+    /// A mix as a page (mixes have none on YouTube Music): the queue YouTube Music builds
+    /// for it, under the mix's own title, subtitle and cover. `target.params`: its endpoint.
+    func mixPage(_ target: BrowseTarget) async throws -> BrowsePage {
+        let endpoint = target.params ?? ""
+        let q: WatchQueue = try await call("watchQueue", ["endpoint": endpoint, "context": ""])
+        var seen = Set<String>()
+        let items = q.items.compactMap { e -> MediaItem? in
+            guard let v = e.videoId, seen.insert(v).inserted else { return nil }
+            let song = e.videoType == nil || e.videoType == "MUSIC_VIDEO_TYPE_ATV"
+            return MediaItem(uid: "mix-\(target.browseId)-\(v)", kind: song ? "song" : "video", title: e.title,
+                             subtitle: e.subtitle, thumbnail: e.thumbnail ?? e.art, videoId: v, browseId: nil,
+                             params: nil, playlistId: nil, artists: e.artists ?? [], album: e.album,
+                             duration: e.duration.isEmpty ? nil : e.duration, explicit: false, play: nil,
+                             wide: false, color: nil)
+        }
+        let header = PageHeader(style: "collection", title: target.title ?? "", subtitle: target.about ?? "",
+                                secondSubtitle: M.t("\(items.count) şarkı", "\(items.count) songs"), strapline: "",
+                                description: "", thumbnail: target.cover, strapThumb: nil, subscribers: "",
+                                play: endpoint, shuffle: nil, radio: nil, artists: [])
+        let list = Shelf(id: "mix-songs", title: "", strapline: nil, layout: "list", items: items,
+                         more: nil, continuation: nil, top: nil)
+        return BrowsePage(header: header, chips: [], sections: [list], continuation: nil)
     }
 
     func browse(_ browseId: String, params: String?) async throws -> BrowsePage {

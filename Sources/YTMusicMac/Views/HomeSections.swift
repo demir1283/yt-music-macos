@@ -124,7 +124,7 @@ struct PicksRow: View {
                     SectionTitle(title: M.t("Senin için seçildi", "Picked for you"), subtitle: nil)
                     FeaturedPick(items: picks)
                 }
-                .frame(width: d.v(400, 480), alignment: .leading)
+                .frame(width: FeaturedPick.width(card: d.card, count: picks.count), alignment: .leading)
             }
             if !stations.isEmpty {
                 VStack(alignment: .leading, spacing: d.v(8, 10)) {
@@ -138,6 +138,9 @@ struct PicksRow: View {
     }
 }
 
+/// "Senin için seçildi": a deck of tall cards (the stations' size), the next picks peeking
+/// out behind the front one. Every few seconds the front card steps aside and the next one
+/// comes forward; a card behind comes forward when clicked, the front one opens.
 private struct FeaturedPick: View {
     let items: [MediaItem]
     @Environment(AppModel.self) private var app
@@ -146,57 +149,50 @@ private struct FeaturedPick: View {
     @ViewState var hover = false
 
     private static let interval: UInt64 = 8_000_000_000
+    /// How far each card behind shows past the one in front, and how much smaller it is.
+    private static let peek: CGFloat = 0.2
+    private static let shrink: CGFloat = 0.09
+
+    private struct Slot: Identifiable {
+        let depth: Int
+        let item: MediaItem
+        var id: String { item.id }
+    }
+
+    static func width(card: CGFloat, count: Int) -> CGFloat {
+        card + card * peek * CGFloat(max(0, min(count, 3) - 1))
+    }
 
     var body: some View {
         let activity = AppActivity.shared
         let running = items.count > 1 && !hover && activity.isActive && activity.isVisible
-        let current = min(index, max(items.count - 1, 0))
-        let cover = d.v(170, 204)
-        VStack(alignment: .trailing, spacing: 6) {
+        let current = items.isEmpty ? 0 : index % items.count
+        let side = d.card
+        let height = side * StationCard.aspect
+        let slots = (0..<min(3, items.count)).map { Slot(depth: $0, item: items[(current + $0) % items.count]) }
+        VStack(spacing: 6) {
             ZStack(alignment: .leading) {
-                if items.indices.contains(current) {
-                    let item = items[current]
-                    HStack(alignment: .center, spacing: d.v(16, 22)) {
-                        Artwork(url: item.thumbnail, cornerRadius: 8)
-                            .frame(width: cover, height: cover)
-                            .cardShadow(cornerRadius: 8, opacity: 0.3, radius: 10, y: 4)
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text([item.typeLabel, item.bylineText].filter { !$0.isEmpty }.joined(separator: " • "))
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                            Text(item.title)
-                                .font(.system(size: d.v(24, 28), weight: .heavy))
-                                .lineLimit(2)
-                            Text(PersonalHome.isOfficial(item) ? M.t("Editörlerin seçimi", "Editors' pick") : M.t("Yeni çıkan", "New release"))
-                                .font(.system(size: 13))
-                                .foregroundStyle(.secondary)
-                            HStack(spacing: 10) {
-                                PlayCircle(size: d.v(36, 40)) { app.play(item) }
-                                CapsuleButton(title: M.t("Aç", "Open"), systemImage: "chevron.right") { app.open(item) }
-                            }
-                            .padding(.top, 6)
+                ForEach(slots) { slot in
+                    DeckCard(item: slot.item, side: side, height: height, depth: slot.depth,
+                             showsPlay: hover && slot.depth == 0)
+                        .scaleEffect(1 - CGFloat(slot.depth) * Self.shrink, anchor: .trailing)
+                        .offset(x: CGFloat(slot.depth) * side * Self.peek)
+                        .zIndex(Double(10 - slot.depth))
+                        .transition(.asymmetric(insertion: .opacity,
+                                                removal: .opacity.combined(with: .offset(x: -side * 0.35))))
+                        .onTapGesture {
+                            if slot.depth == 0 { app.open(slot.item) } else { bringForward(slot.item) }
                         }
-                    }
-                    .id(item.id)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .move(edge: .leading).combined(with: .opacity)))
-                    .contentShape(Rectangle())
-                    .onTapGesture { app.open(item) }
-                    .contextMenu { ItemMenu(item: item) }
+                        .contextMenu { ItemMenu(item: slot.item) }
                 }
             }
-            .frame(height: cover, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .clipped()
-            // The dots sit in their own row under the pick, clear of its buttons.
+            .frame(width: Self.width(card: side, count: items.count), height: height, alignment: .leading)
+            // The dots sit in their own row under the deck; each one brings its pick forward.
             if items.count > 1 {
-                // Each dot picks its slide; the hit area is larger than the dot.
                 HStack(spacing: 0) {
                     ForEach(0..<items.count, id: \.self) { i in
                         Button {
-                            withAnimation(.easeInOut(duration: 0.5)) { index = i }
+                            withAnimation(Self.step) { index = i }
                         } label: {
                             Capsule()
                                 .fill(i == current ? Color.primary : Color.primary.opacity(hover ? 0.45 : 0.3))
@@ -216,9 +212,95 @@ private struct FeaturedPick: View {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: Self.interval)
                 guard !Task.isCancelled else { return }
-                withAnimation(.easeInOut(duration: 0.55)) { index = (min(index, items.count - 1) + 1) % items.count }
+                withAnimation(Self.step) { index = (index % items.count + 1) % items.count }
             }
         }
+    }
+
+    private static let step = Animation.smooth(duration: 0.6)
+
+    private func bringForward(_ item: MediaItem) {
+        guard let i = items.firstIndex(where: { $0.id == item.id }) else { return }
+        withAnimation(Self.step) { index = i }
+    }
+}
+
+/// One card of the deck: the cover filling it, the title and artists over its lower part,
+/// a "YENİ ÇIKAN" / "EDİTÖR SEÇİMİ" tag. Cards further back are dimmed.
+private struct DeckCard: View {
+    let item: MediaItem
+    let side: CGFloat
+    let height: CGFloat
+    let depth: Int
+    let showsPlay: Bool
+    @Environment(AppModel.self) private var app
+    private static let radius: CGFloat = 12
+
+    var body: some View {
+        let official = PersonalHome.isOfficial(item)
+        ZStack(alignment: .bottomLeading) {
+            Color.black.opacity(0.35)
+            Artwork(url: item.thumbnail, cornerRadius: 0)
+                .frame(width: side, height: height)
+            LinearGradient(stops: [
+                .init(color: .clear, location: 0.42),
+                .init(color: .black.opacity(0.82), location: 1),
+            ], startPoint: .top, endPoint: .bottom)
+            .allowsHitTesting(false)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.title)
+                    .font(.system(size: side * 0.1, weight: .heavy))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
+                    .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
+                Text(item.bylineText)
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .lineLimit(1)
+            }
+            .padding(12)
+            .padding(.trailing, 36)
+
+            CardTag(title: official ? M.t("EDİTÖR SEÇİMİ", "EDITORS' PICK") : M.t("YENİ ÇIKAN", "NEW"),
+                    systemImage: official ? "star" : "sparkles")
+                .padding(10)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            if showsPlay {
+                PlayCircle(size: 32) { app.play(item) }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .transition(.opacity)
+            }
+            if depth > 0 {
+                Color.black.opacity(0.2 * Double(depth)).allowsHitTesting(false)
+            }
+        }
+        .frame(width: side, height: height)
+        .clipShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
+            .strokeBorder(.white.opacity(0.08), lineWidth: 0.5))
+        .cardShadow(cornerRadius: Self.radius, opacity: depth == 0 ? 0.3 : 0.16, radius: depth == 0 ? 12 : 6, y: 4)
+        .contentShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
+    }
+}
+
+/// The small tag at the top of the home page's tall cards ("RADYO", "YENİ ÇIKAN").
+private struct CardTag: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        Label(title, systemImage: systemImage)
+            .font(.system(size: 9.5, weight: .heavy))
+            .tracking(0.4)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(.black.opacity(0.32)))
+            .overlay(Capsule().strokeBorder(.white.opacity(0.22), lineWidth: 0.5))
     }
 }
 
@@ -247,7 +329,7 @@ private struct StationsCarousel: View {
             .padding(.trailing, d.pad)
         }
         .scrollPosition(id: $position, anchor: .leading)
-        .frame(height: side + d.v(44, 50))
+        .frame(height: side * StationCard.aspect + d.v(44, 50))
         .background(GeometryReader { g in
             Color.clear
                 .onAppear { viewport = g.size.width }
@@ -276,45 +358,71 @@ private struct StationsCarousel: View {
     }
 }
 
-/// An artist's radio: coloured square, the artist's portrait, "RADYO".
+/// An artist's radio: a tall card filled by the artist's photo, washed into the artist's
+/// colour towards the bottom, with the name over it and a small "RADYO" tag.
 private struct StationCard: View {
     let item: MediaItem
+    /// The card's width; it is `aspect` times as tall.
     let side: CGFloat
+    static let aspect: CGFloat = 1.25
+    private static let radius: CGFloat = 12
     @Environment(AppModel.self) private var app
     @ViewState var hover = false
 
     var body: some View {
+        let color = HomePalette.color(for: item.title)
+        let height = side * Self.aspect
         VStack(alignment: .leading, spacing: 8) {
-            ZStack {
-                HomePalette.color(for: item.title)
-                // The artist's own photo, or none (just the name below).
+            ZStack(alignment: .bottomLeading) {
+                // The artist's colour: behind the photo, and alone when there is none.
+                LinearGradient(colors: [color, color.opacity(0.75)], startPoint: .top, endPoint: .bottom)
                 if item.thumbnail != nil {
-                    Artwork(url: item.thumbnail, cornerRadius: 8, placeholder: "person.fill")
-                        .frame(width: side * 0.56, height: side * 0.56)
-                        .offset(y: -side * 0.05)
+                    Artwork(url: item.thumbnail, cornerRadius: 0, placeholder: "person.fill")
+                        .frame(width: side, height: height)
+                        .scaleEffect(hover ? 1.04 : 1)
+                        .animation(.soft, value: hover)
+                } else {
+                    Image(systemName: "dot.radiowaves.left.and.right")
+                        .font(.system(size: side * 0.3, weight: .semibold))
+                        .foregroundStyle(.black.opacity(0.16))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                Text(M.t("RADYO", "RADIO"))
-                    .font(.system(size: 10, weight: .heavy))
-                    .foregroundStyle(.black.opacity(0.75))
+                // The colour rises from the bottom, so the name reads over any photo.
+                LinearGradient(stops: [
+                    .init(color: .clear, location: 0.4),
+                    .init(color: color.opacity(0.3), location: 0.64),
+                    .init(color: .black.opacity(0.78), location: 1),
+                ], startPoint: .top, endPoint: .bottom)
+                .allowsHitTesting(false)
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(item.title)
+                        .font(.system(size: side * 0.12, weight: .heavy))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.6)
+                        .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
+                    Capsule().fill(color).frame(width: side * 0.16, height: 3)
+                }
+                .padding(12)
+                .padding(.trailing, 40)
+
+                CardTag(title: M.t("RADYO", "RADIO"), systemImage: "dot.radiowaves.left.and.right")
                     .padding(10)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                Text(item.title)
-                    .font(.system(size: side * 0.13, weight: .heavy))
-                    .foregroundStyle(.black)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
                 if hover {
                     PlayCircle(size: 32) { app.play(item) }
                         .padding(10)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                         .transition(.opacity)
                 }
             }
-            .frame(width: side, height: side)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .cardShadow(cornerRadius: 8, opacity: hover ? 0.25 : 0.12, radius: hover ? 10 : 4, y: 3)
+            .frame(width: side, height: height)
+            .clipShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
+                .strokeBorder(.white.opacity(0.08), lineWidth: 0.5))
+            .cardShadow(cornerRadius: Self.radius, opacity: hover ? 0.28 : 0.14, radius: hover ? 12 : 5, y: 4)
             Text(item.subtitle)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)

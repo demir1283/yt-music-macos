@@ -77,6 +77,9 @@ enum PersonalHome {
                                                         Array(subs.prefix(15))), limit: 15)
         let topArtists = Self.unique(profile.topListened(limit: 15).compactMap(artistItem) + followed, limit: 15)
         let hybrid = Self.unique(Self.interleave(topArtists, recentArtists), limit: 30).filter { wanted($0) && $0.browseId != nil }
+        // Artists known only from the history have no picture yet: their own square one
+        // (their avatar on YouTube, not their page's banner), asked for alongside the rest.
+        async let photosTask = engine.channelPhotos(hybrid.filter { $0.thumbnail == nil }.compactMap(\.browseId))
 
         // YouTube's subscriptions feed (the notifications row, and the new releases below).
         let uploads = await uploadsTask
@@ -155,9 +158,15 @@ enum PersonalHome {
 
         let quickItems = quick?.items ?? []
         let recentSongs = profile.recent(limit: 20).map { Self.item($0) }.filter(wanted)
-        let topMixes = profile.topArtists(limit: 12)
+        // Each mix's artist, by the mix's title: its cover becomes the artist's own picture.
+        var mixArtist: [String: String] = [:]
+        var topMixes = profile.topArtists(limit: 12)
             .sorted { profile.listened($0.name) > profile.listened($1.name) }
-            .map { Self.mix(name: $0.name, seed: $0.seed) }
+            .map { a -> MediaItem in
+                let m = Self.mix(name: a.name, seed: a.seed)
+                if let id = Self.artistId(a.name, in: a.seed) { mixArtist[m.title] = id }
+                return m
+            }
 
         // New releases: albums and singles, artists you listen to and follow first.
         let releases = (releasesPage?.sections ?? []).flatMap(\.items)
@@ -181,7 +190,12 @@ enum PersonalHome {
             let name = it.artists.first?.name ?? it.subtitle.components(separatedBy: " • ").first ?? ""
             guard !name.isEmpty, mixTitles.insert("\(name) Mix").inserted else { continue }
             seedMixes.append(Self.mix(name: name, videoId: vid, cover: it.thumbnail))
+            if let id = it.artists.first?.id, id.hasPrefix("UC") { mixArtist["\(name) Mix"] = id }
         }
+        // The mixes' covers: their artist's square picture (avatar on YouTube), like YouTube
+        // Music's own artist mixes, instead of the cover of the song each one starts from.
+        let mixArtistIds = Array(Set(mixArtist.values))
+        async let mixPhotosTask = engine.channelPhotos(mixArtistIds)
 
         // YouTube Music's editorial playlists, the official ones on its home first.
         let homeOfficial = music.sections.flatMap(\.items).filter { Self.isOfficial($0) }
@@ -189,14 +203,24 @@ enum PersonalHome {
 
         let fetched = await artistPagesTask
         let pageById = Dictionary(zip(pageIds, fetched), uniquingKeysWith: { a, _ in a })
-        // Artists known only from the history get their page's photo when it was loaded;
+        // Artists known only from the history get their own square picture when it came;
         // otherwise they show their name alone.
+        let photos = await photosTask
         let artists = hybrid.map { a -> MediaItem in
-            guard a.thumbnail == nil, let id = a.browseId, let photo = pageById[id]?.header?.thumbnail else { return a }
+            guard a.thumbnail == nil, let id = a.browseId, let photo = photos[id] else { return a }
             var withPhoto = a
             withPhoto.thumbnail = photo
             return withPhoto
         }
+        let mixPhotos = await mixPhotosTask
+        func withArtistPhoto(_ m: MediaItem) -> MediaItem {
+            guard let id = mixArtist[m.title], let photo = mixPhotos[id] else { return m }
+            var m = m
+            m.thumbnail = photo
+            return m
+        }
+        topMixes = topMixes.map(withArtistPhoto)
+        seedMixes = seedMixes.map(withArtistPhoto)
         let artistPages = artists.prefix(6).map { a in a.browseId.flatMap { pageById[$0] } ?? BrowsePage(header: nil, chips: [], sections: [], continuation: nil) }
         let savedSongs = (await savedTask).flatMap { $0.sections.flatMap(\.items) }.filter { $0.isTrack && wanted($0) }
         let stations = artists.map { Self.station($0) }
@@ -764,6 +788,14 @@ enum PersonalHome {
                          videoId: t.videoId, browseId: nil, params: nil, playlistId: nil, artists: artists,
                          album: nil, duration: nil, explicit: false, play: endpoint(t.videoId, nil),
                          wide: !song, color: nil)
+    }
+
+    /// The id of `name` among the seed song's artists (YouTube Music's artist channel).
+    private static func artistId(_ name: String, in seed: ListeningProfile.Track) -> String? {
+        let key = ListeningProfile.key(name)
+        guard let i = seed.artists.firstIndex(where: { ListeningProfile.key($0) == key }),
+              seed.artistIds.indices.contains(i), seed.artistIds[i].hasPrefix("UC") else { return nil }
+        return seed.artistIds[i]
     }
 
     /// A radio started from the artist's best-liked song.

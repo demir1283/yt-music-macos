@@ -577,6 +577,16 @@ enum BridgeScript {
   const WEB_ORIGIN = 'https://www.youtube.com';
   const WEB_VERSION = '2.20251114.01.00';
 
+  // A channel page's avatar, as large as YouTube serves it (its "=s176" size raised).
+  function channelAvatar(r) {
+    const fromList = (list) => (Array.isArray(list) && list.length ? list[list.length - 1].url : null);
+    const url = fromList(r?.metadata?.channelMetadataRenderer?.avatar?.thumbnails)
+      || fromList(findKey(r, 'decoratedAvatarViewModel')?.avatar?.avatarViewModel?.image?.sources)
+      || fromList(findKey(r, 'c4TabbedHeaderRenderer')?.avatar?.thumbnails);
+    if (!url) return null;
+    return (url.startsWith('//') ? 'https:' + url : url).replace(/=s\d+(-[^/]*)?$/, '=s512$1');
+  }
+
   async function webApi(endpoint, body) {
     const cfg = window.ytcfg;
     const base = cfg.get('INNERTUBE_CONTEXT') || {};
@@ -799,6 +809,19 @@ enum BridgeScript {
         } catch (e) { break; }
       }
       return { items: uniqueYt(items), musicOnly };
+    },
+
+    // Each channel's own square picture (its avatar on regular YouTube), by channel id.
+    // YouTube Music's artist pages often carry only a wide banner, which crops badly.
+    async channelPhotos({ ids }) {
+      const out = {};
+      await Promise.all((ids || []).slice(0, 30).map(async (id) => {
+        try {
+          const r = await webApi('browse', { browseId: id });
+          out[id] = channelAvatar(r);
+        } catch (e) { /* left out: the card shows the name alone */ }
+      }));
+      return out;
     },
 
     // Latest uploads of the channels this account follows, newest first (YouTube's

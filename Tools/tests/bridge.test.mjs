@@ -114,3 +114,22 @@ test("each format's loudness and the song's overall loudness are passed on", asy
   assert.equal(r.loudnessDb, 4.5);
   assert.deepEqual(r.formats.map((f) => f.loudnessDb), [5.25, null]);
 });
+
+// --- Channel pictures: the channel's own avatar, not its banner.
+
+test("a channel's photo is its avatar, asked for large", async () => {
+  const bridge = loadBridge({
+    metadata: { channelMetadataRenderer: { avatar: { thumbnails: [
+      { url: 'https://yt3.ggpht.com/abc=s48-c-k-c0x00ffffff-no-rj' },
+      { url: 'https://yt3.ggpht.com/abc=s176-c-k-c0x00ffffff-no-rj' }] } } },
+    header: { pageHeaderRenderer: { banner: { imageBannerViewModel: { image: { sources: [{ url: 'https://yt3.ggpht.com/banner=w2560' }] } } } } },
+  }, loggedIn);
+  const r = JSON.parse(await bridge.call('channelPhotos', JSON.stringify({ ids: ['UCx'] })));
+  assert.equal(r.UCx, 'https://yt3.ggpht.com/abc=s512-c-k-c0x00ffffff-no-rj');
+});
+
+test('a channel without a picture is left empty', async () => {
+  const bridge = loadBridge({ metadata: {} }, loggedIn);
+  const r = JSON.parse(await bridge.call('channelPhotos', JSON.stringify({ ids: ['UCy'] })));
+  assert.equal(r.UCy, null);
+});

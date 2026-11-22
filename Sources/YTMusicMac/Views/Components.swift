@@ -382,6 +382,17 @@ struct FilterChips: View {
     }
 
     private func chip(_ title: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+        ChipButton(title: title, isOn: isOn, action: action)
+    }
+}
+
+/// One filter chip, as at the top of the home and search pages.
+struct ChipButton: View {
+    let title: String
+    let isOn: Bool
+    let action: () -> Void
+
+    var body: some View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 12, weight: .medium))

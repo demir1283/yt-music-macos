@@ -145,8 +145,11 @@ struct DislikedContentSheet: View {
         case .album, .artist, .playlist:
             let id = ["PL", "RD", "OLAK"].contains(where: { key.hasPrefix($0) }) ? "VL" + key : key
             guard let header = try? await engine.browse(id, params: nil).header, !header.title.isEmpty else { return nil }
+            // An artist or channel: its own square picture, not its page's banner.
+            var picture = header.thumbnail
+            if HiddenKind.of(key) == .artist { picture = await engine.channelPhotos([key])[key] }
             return AppModel.HiddenInfo(title: header.title, subtitle: header.subtitle,
-                                       thumbnail: header.thumbnail, date: .distantPast)
+                                       thumbnail: picture, date: .distantPast)
         case .other:
             return nil
         }

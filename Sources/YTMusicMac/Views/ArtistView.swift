@@ -7,6 +7,8 @@ struct ArtistView: View {
 
     @ViewState var page: BrowsePage? = nil
     @ViewState var error: String? = nil
+    /// The artist's own square picture (their channel avatar on YouTube).
+    @ViewState var photo: String? = nil
 
     private var name: String { shown?.header?.title ?? target.title ?? "" }
 
@@ -65,50 +67,70 @@ struct ArtistView: View {
         .navigationTitle(name)
         .pageChrome()
         .task(id: taskKey) { await load() }
+        .task(id: target.browseId) {
+            let id = target.browseId
+            guard id.hasPrefix("UC") else { return }
+            let found = await app.engine.channelPhotos([id])[id]
+            withAnimation(.soft) { photo = found }
+        }
     }
 
+    /// The artist's banner across the top, their own square photo overlapping its lower
+    /// edge with the name beside it (below the banner), like a profile page.
     private func hero(_ h: PageHeader?) -> some View {
-        ZStack(alignment: .bottomLeading) {
-            Artwork(url: h?.thumbnail, cornerRadius: 0, placeholder: "person.fill")
-                .frame(height: d.heroHeight)
-                .frame(maxWidth: .infinity)
-            LinearGradient(colors: [.clear, .black.opacity(0.6)], startPoint: .center, endPoint: .bottom)
-            HStack(alignment: .bottom, spacing: 16) {
-                PlayCircle(size: d.v(42, 50)) { playShuffle(h) }
-                VStack(alignment: .leading, spacing: 4) {
+        let side = d.v(96, 132)
+        return VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .bottomTrailing) {
+                Artwork(url: h?.thumbnail, cornerRadius: 0, placeholder: "person.fill")
+                    .frame(height: d.heroHeight)
+                    .frame(maxWidth: .infinity)
+                LinearGradient(colors: [.clear, .black.opacity(0.55)], startPoint: .center, endPoint: .bottom)
+                    .allowsHitTesting(false)
+                // Subscribe and radio stay on the banner, where their light style reads.
+                HStack(spacing: 10) {
+                    if let h, h.channelId != nil {
+                        SubscribeButton(name: name, header: h)
+                    }
+                    if let radio = h?.radio {
+                        Button { app.engine.play(endpoint: radio) } label: {
+                            Label(M.t("Radyo", "Radio"), systemImage: "dot.radiowaves.left.and.right")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 14)
+                                .frame(height: 30)
+                                .background(Capsule().fill(.white.opacity(0.2)))
+                        }
+                        .buttonStyle(PressScaleStyle())
+                    }
+                }
+                .padding(d.v(14, 20))
+            }
+            .frame(height: d.heroHeight)
+            .clipShape(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 0,
+                                              bottomTrailingRadius: 0, topTrailingRadius: 20, style: .continuous))
+
+            HStack(alignment: .bottom, spacing: d.v(14, 20)) {
+                ArtistPhoto(url: photo, name: name)
+                    .frame(width: side, height: side)
+                VStack(alignment: .leading, spacing: 3) {
                     Text(name)
                         .font(.system(size: d.heroTitle, weight: .heavy))
-                        .foregroundStyle(.white)
                         .lineLimit(1)
                         .minimumScaleFactor(0.4)
-                        .shadow(color: .black.opacity(0.3), radius: 8)
                     if let subs = h?.subscribers, !subs.isEmpty {
                         Text(subs)
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.85))
+                            .foregroundStyle(.secondary)
                     }
                 }
-                Spacer()
-                if let h, h.channelId != nil {
-                    SubscribeButton(name: name, header: h)
-                }
-                if let radio = h?.radio {
-                    Button { app.engine.play(endpoint: radio) } label: {
-                        Label(M.t("Radyo", "Radio"), systemImage: "dot.radiowaves.left.and.right")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 14)
-                            .frame(height: 30)
-                            .background(Capsule().fill(.white.opacity(0.2)))
-                    }
-                    .buttonStyle(PressScaleStyle())
-                }
+                .padding(.bottom, 4)
+                Spacer(minLength: 12)
+                PlayCircle(size: d.v(42, 50)) { playShuffle(h) }
+                    .padding(.bottom, 4)
             }
-            .padding(d.v(16, 24))
+            .padding(.horizontal, d.pad)
+            .padding(.top, -side * 0.45)
         }
-        .frame(height: d.heroHeight)
-        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 0,
-                                          bottomTrailingRadius: 0, topTrailingRadius: 20, style: .continuous))
     }
 
     private func playShuffle(_ h: PageHeader?) {
@@ -138,6 +160,33 @@ struct ArtistView: View {
         } catch is CancellationError {
         } catch {
             if page == nil { self.error = error.localizedDescription }
+        }
+    }
+}
+
+/// The artist's square photo on their page; until it comes (or without one), a tile in
+/// the artist's colour with their initial.
+private struct ArtistPhoto: View {
+    let url: String?
+    let name: String
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                HomePalette.color(for: name)
+                Text(name.prefix(1).uppercased())
+                    .font(.system(size: geo.size.width * 0.42, weight: .heavy))
+                    .foregroundStyle(.black.opacity(0.55))
+                if let url {
+                    Artwork(url: url, cornerRadius: 0, placeholder: "person.fill")
+                        .transition(.opacity)
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(.white.opacity(0.18), lineWidth: 1))
+            .shadow(color: .black.opacity(0.3), radius: 12, y: 6)
         }
     }
 }

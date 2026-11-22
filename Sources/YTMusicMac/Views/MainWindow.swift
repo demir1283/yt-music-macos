@@ -274,7 +274,7 @@ struct DetailPage: View {
             switch target.kind {
             case "artist":
                 ArtistView(target: target)
-            case "album", "playlist", "podcast":
+            case "album", "playlist", "podcast", "mix":
                 CollectionView(target: target)
             default:
                 BrowsePageView(target: target)

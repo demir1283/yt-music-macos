@@ -36,6 +36,9 @@ struct ListeningSummary {
         var cover: String?
         var seconds: Double = 0
         var plays = 0
+        /// Names and channel ids, for the song list's artist links.
+        var artists: [String] = []
+        var artistIds: [String] = []
     }
 
     static let minimumHeard = 30
@@ -62,7 +65,8 @@ struct ListeningSummary {
             seconds += heard
             plays += 1
 
-            var song = songs[p.v] ?? Song(id: p.v, title: p.ti, artist: p.ar.joined(separator: ", "), cover: p.th)
+            var song = songs[p.v] ?? Song(id: p.v, title: p.ti, artist: p.ar.joined(separator: ", "), cover: p.th,
+                                          artists: p.ar, artistIds: p.ai)
             song.seconds += heard
             song.plays += 1
             if let th = p.th { song.cover = th }
@@ -81,8 +85,8 @@ struct ListeningSummary {
 
         songCount = songs.count
         artistCount = artists.count
-        topArtists = Array(artists.values.sorted { ($0.seconds, $1.name) > ($1.seconds, $0.name) }.prefix(8))
-        topSongs = Array(songs.values.sorted { ($0.plays, $0.seconds) > ($1.plays, $1.seconds) }.prefix(10))
+        topArtists = Array(artists.values.sorted { ($0.seconds, $1.name) > ($1.seconds, $0.name) }.prefix(20))
+        topSongs = Array(songs.values.sorted { ($0.plays, $0.seconds) > ($1.plays, $1.seconds) }.prefix(50))
     }
 
     /// Reads the history off the main thread.
