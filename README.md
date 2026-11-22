@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 3.0.0-dev" src="https://img.shields.io/badge/version-3.0.0--dev-ff2d55">
+  <img alt="Version 3.0.0" src="https://img.shields.io/badge/version-3.0.0-ff2d55">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-000000?logo=apple">
   <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white">
   <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-3c8dbc">
@@ -33,13 +33,13 @@ On top of what YouTube Music offers, the app has a few things of its own:
 - **New releases:** the latest releases of the artists you follow and of the artists you listen to.
 - **Notifications:** recent uploads from the music channels you follow, without Shorts.
 - **Radio cleanup (optional):** prefers official song versions and plays each song once; DJ sets are left as they are.
-- **Listening history on your Mac:** used for the recommendations above; you can turn it off or erase it.
+- **Listening history on your Mac:** used for the recommendations above and for a summary of your listening (week, month, year); you can turn it off or erase it.
 - **Long sets:** DJ sets and live recordings from regular YouTube, in the genres you listen to.
 - **Sound output:** pick a speaker, Bluetooth, USB or display output for this app only, or use AirPlay.
 
 ## What's new
 
-- **3.0 (in progress):** even volume between songs, a sleep timer, a summary of your listening, and disliked content you can bring back.
+- **3.0 — Even volume, sleep timer, your listening:** even volume between songs, a sleep timer, a summary of your listening, a redesigned home page and artist pages with the artists' own photos, mixes you can open, and disliked content you can bring back.
 - **2.7 — Updates from inside the app:** a new version shows up in the sidebar; one click pulls and builds it. See [Updating](#updating).
 - **2.6 — English interface:** the whole app follows your Mac's language (English or Turkish), or the one you pick in Settings.
 - **2.5 — A new “New releases” page:** the latest releases of the artists you follow and listen to; every channel of a joint upload is a link.

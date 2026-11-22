@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Sürüm 3.0.0-dev" src="https://img.shields.io/badge/s%C3%BCr%C3%BCm-3.0.0--dev-ff2d55">
+  <img alt="Sürüm 3.0.0" src="https://img.shields.io/badge/s%C3%BCr%C3%BCm-3.0.0-ff2d55">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-000000?logo=apple">
   <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white">
   <img alt="MIT Lisansı" src="https://img.shields.io/badge/lisans-MIT-3c8dbc">
@@ -33,13 +33,13 @@ YouTube Music'in sunduklarına ek olarak uygulamanın kendine ait birkaç özell
 - **Yeni çıkanlar:** takip ettiğin ve dinlediğin sanatçıların son yayınları.
 - **Bildirimler:** takip ettiğin müzik kanallarının son yüklemeleri, Shorts olmadan.
 - **Radyo düzenleme (isteğe bağlı):** resmî şarkı sürümlerini öne alır, her şarkıyı bir kez çalar; DJ setlerine dokunmaz.
-- **Mac'inde dinleme geçmişi:** yukarıdaki öneriler için kullanılır; kapatabilir veya silebilirsin.
+- **Mac'inde dinleme geçmişi:** yukarıdaki öneriler ve dinleme özetin (hafta, ay, yıl) için kullanılır; kapatabilir veya silebilirsin.
 - **Uzun setler:** dinlediğin türlerde, normal YouTube'dan DJ setleri ve canlı kayıtlar.
 - **Ses çıkışı:** yalnızca bu uygulama için hoparlör, Bluetooth, USB veya ekran çıkışı seç; ya da AirPlay kullan.
 
 ## Yenilikler
 
-- **3.0 (hazırlanıyor):** şarkılar arasında eşit ses, uyku zamanlayıcı, dinleme özetin ve geri alınabilen beğenilmeyen içerik.
+- **3.0 — Eşit ses, uyku zamanlayıcı, dinleme özetin:** şarkılar arasında eşit ses, uyku zamanlayıcı, dinleme özetin, sanatçıların kendi fotoğraflarıyla yenilenen ana sayfa ve sanatçı sayfaları, açılabilen mix'ler ve geri alınabilen beğenilmeyen içerik.
 - **2.7 — Uygulama içinden güncelleme:** yeni sürüm kenar çubuğunda görünür; tek tıkla indirilip derlenir. Bkz. [Güncelleme](#güncelleme).
 - **2.6 — İngilizce arayüz:** uygulamanın tamamı Mac'inin diline (Türkçe veya İngilizce) ya da Ayarlar'da seçtiğine uyar.
 - **2.5 — Yeni “Yeni çıkanlar” sayfası:** takip ettiğin ve dinlediğin sanatçıların son yayınları; ortak yüklemelerde her kanal bir bağlantı.

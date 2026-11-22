@@ -1,8 +1,8 @@
 # Changelog
 
-## 3.0.0 — in progress
+## 3.0.0 — 2026-11-23
 
-Collected on the `next` branch and released together. So far: even volume, a sleep timer, a way back for what you disliked, and a summary of your listening.
+Even volume between songs, a sleep timer, a summary of your listening, a redesigned home page and artist pages with the artists' own photos, mixes you can open, and a way back for what you disliked.
 
 - **Your listening:** a new page in the sidebar (Collection), in the app's own layout, sums up the history kept on this Mac for the last 7 days, 30 days, this year or all time: period chips as on the home page; a headline with the time listened and the number of songs, artists and channels; your top 20 artists and channels as cards with their own square pictures (their avatars on YouTube, not their pages' banners) — including the YouTube channels whose sets you play — opening their pages; and your top 50 songs as a regular song list, 20 at first (play, right-click menu, how often each was played). Songs heard for at least 30 seconds count; nothing is sent anywhere.
 - **Volume leveling:** YouTube measures every song's loudness; every song is now brought to a level 6 dB below YouTube's reference, so the volume no longer jumps from one song to the next (in testing, the spread between four songs went from 8.9 dB to 2.9 dB). The player can't turn a song up past its own level, so the few quieter than that stay as they are, and the app as a whole is somewhat quieter — raise the volume once. On by default; Settings → Listening → Level the volume. Turning it on or off mid-song eases over a moment.
