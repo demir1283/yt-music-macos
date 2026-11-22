@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.0 — in progress
+
+Collected on the `next` branch and released together. So far: even volume, a sleep timer, and a way back for what you disliked.
+
+- **Volume leveling:** YouTube measures every song's loudness; every song is now brought to a level 6 dB below YouTube's reference, so the volume no longer jumps from one song to the next (in testing, the spread between four songs went from 8.9 dB to 2.9 dB). The player can't turn a song up past its own level, so the few quieter than that stay as they are, and the app as a whole is somewhat quieter — raise the volume once. On by default; Settings → Listening → Level the volume. Turning it on or off mid-song eases over a moment.
+- **Sleep timer:** a moon button in the player bar opens its panel, like the sound output button: what it does, 15, 30, 45 minutes, 1 or 1.5 hours, or the end of the song (the running choice checked), and Turn off. While it runs the moon is filled, in the accent colour, with the time left beside it; on a narrow window the button shows only then. Also in the Controls and Dock menus. When time is up the sound fades out over 8 seconds and playback stops.
+- **Disliked content:** Settings → Privacy → Disliked content → Show opens a sheet over Settings (Esc closes it, as it does Settings) with everything you disliked or marked "Don't recommend", grouped by kind (songs, albums, playlists, artists), searchable, with covers; bring items back one by one or all at once. Songs brought back are no longer disliked on YouTube either. Items hidden before this version were saved by id only: their names and covers are looked up when the sheet opens, with placeholders until they come.
+
 ## 2.7.2 — 2026-11-22
 
 Search fixes, and every change now built and tested by GitHub.

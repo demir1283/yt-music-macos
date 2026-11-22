@@ -5,7 +5,8 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    # main: what's released; next: the work for the coming major version.
+    branches: [main, next]
   pull_request:
 
 jobs:

@@ -96,3 +96,21 @@ test("without a chosen language YouTube's own stays", async () => {
 test('a chosen language replaces it', async () => {
   assert.equal(await languageAfterBootstrap('en', 'en'), 'en');
 });
+
+// --- Player data: each song's loudness reaches the app (volume leveling).
+
+test("each format's loudness and the song's overall loudness are passed on", async () => {
+  const bridge = loadBridge({
+    playabilityStatus: { status: 'OK' },
+    videoDetails: { videoId: 'vvvvvvvvvvv', lengthSeconds: '200' },
+    playerConfig: { audioConfig: { loudnessDb: 4.5 } },
+    streamingData: { adaptiveFormats: [
+      { itag: 141, mimeType: 'audio/mp4; codecs="mp4a.40.2"', bitrate: 260000, url: 'https://a', loudnessDb: 5.25 },
+      { itag: 140, mimeType: 'audio/mp4; codecs="mp4a.40.2"', bitrate: 130000, url: 'https://b' },
+      { itag: 137, mimeType: 'video/mp4', bitrate: 4000000, url: 'https://v' },
+    ] },
+  }, loggedIn);
+  const r = JSON.parse(await bridge.call('playerData', JSON.stringify({ videoId: 'vvvvvvvvvvv' })));
+  assert.equal(r.loudnessDb, 4.5);
+  assert.deepEqual(r.formats.map((f) => f.loudnessDb), [5.25, null]);
+});

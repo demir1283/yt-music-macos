@@ -33,9 +33,101 @@ final class AudioPlayer {
     var onEnded: (() -> Void)?
     var onFailed: ((String) -> Void)?
 
+    /// The listener's volume, 0…100. What the player gets is this times the song's `gain`.
     var volume: Double {
-        get { Double(player.volume) * 100 }
-        set { player.volume = Float(min(100, max(0, newValue)) / 100) }
+        get { Double(userVolume) * 100 }
+        set {
+            userVolume = Float(min(100, max(0, newValue)) / 100)
+            applyVolume()
+        }
+    }
+    private var userVolume: Float = 1
+
+    /// What the player plays at: the listener's volume, the song's leveling and the sleep
+    /// timer's fade.
+    private func applyVolume() { player.volume = userVolume * gain * fade }
+
+    /// Volume leveling for the playing song: 1 leaves it as it is, below 1 turns a loud
+    /// master down to YouTube's reference level. Changed mid-song, it eases over ~0.4 s.
+    private(set) var gain: Float = 1
+    private var gainRamp: Timer?
+    private var rampFrom: Float = 1
+    private var rampTo: Float = 1
+    private var rampStep = 0
+    private static let rampSteps = 12
+
+    func setGain(_ value: Float, smoothly: Bool) {
+        gainRamp?.invalidate()
+        gainRamp = nil
+        let target = min(1, max(0.1, value))
+        guard smoothly, abs(target - gain) > 0.01 else {
+            gain = target
+            applyVolume()
+            return
+        }
+        rampFrom = gain
+        rampTo = target
+        rampStep = 0
+        // The timer runs on the main run loop, where this class lives.
+        gainRamp = Timer.scheduledTimer(withTimeInterval: 0.4 / Double(Self.rampSteps), repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.rampTick() }
+        }
+    }
+
+    private func rampTick() {
+        rampStep += 1
+        let t = Float(rampStep) / Float(Self.rampSteps)
+        gain = rampFrom + (rampTo - rampFrom) * (t * t * (3 - 2 * t))
+        applyVolume()
+        if rampStep >= Self.rampSteps {
+            gainRamp?.invalidate()
+            gainRamp = nil
+        }
+    }
+
+    // MARK: Sleep timer fade
+
+    private var fade: Float = 1
+    private var fadeTimer: Timer?
+    private var fadeStep = 0
+    private var fadeSteps = 1
+    private var fadeDone: (() -> Void)?
+
+    /// Turns the sound down to nothing over `seconds`, then calls `done` (which pauses);
+    /// the volume is back to normal afterwards, ready for the next play.
+    func fadeOut(over seconds: Double, then done: @escaping () -> Void) {
+        cancelFade()
+        fadeSteps = max(1, Int(seconds * 10))
+        fadeStep = 0
+        fadeDone = done
+        fadeTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.fadeTick() }
+        }
+    }
+
+    private func fadeTick() {
+        fadeStep += 1
+        let t = Float(fadeStep) / Float(fadeSteps)
+        fade = max(0, 1 - t * t * (3 - 2 * t))
+        applyVolume()
+        guard fadeStep >= fadeSteps else { return }
+        fadeTimer?.invalidate()
+        fadeTimer = nil
+        let done = fadeDone
+        fadeDone = nil
+        done?()
+        fade = 1
+        applyVolume()
+    }
+
+    func cancelFade() {
+        fadeTimer?.invalidate()
+        fadeTimer = nil
+        fadeDone = nil
+        if fade != 1 {
+            fade = 1
+            applyVolume()
+        }
     }
 
     var isMuted: Bool {
@@ -141,7 +233,9 @@ final class AudioPlayer {
         standby = nil
     }
 
-    func load(url: URL, headers: [String: String], duration: Double, autoplay: Bool, startAt: Double = 0) {
+    func load(url: URL, headers: [String: String], duration: Double, autoplay: Bool, startAt: Double = 0,
+              gain: Float = 1) {
+        setGain(gain, smoothly: false)
         if EngineLog.enabled {
             loadedAt = Date()
             toldWait = nil
@@ -176,7 +270,7 @@ final class AudioPlayer {
         detachPlayerObservers()
         old.pause()
         old.replaceCurrentItem(with: nil)
-        next.volume = old.volume
+        next.volume = userVolume * self.gain * fade
         next.isMuted = old.isMuted
         next.audioOutputDeviceUniqueID = outputDeviceUID
         player = next

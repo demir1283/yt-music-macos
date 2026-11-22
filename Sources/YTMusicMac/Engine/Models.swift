@@ -362,6 +362,7 @@ struct PlayerData: Codable {
         let indexRange: [Int]?
         let drc: Bool
         let isDefault: Bool
+        let loudnessDb: Double?
     }
     let status: String
     let reason: String
@@ -370,6 +371,7 @@ struct PlayerData: Codable {
     let formats: [Format]
     let hls: String?
     let sabr: Bool
+    let loudnessDb: Double?
 }
 
 struct BylineLink: Codable, Hashable {

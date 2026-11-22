@@ -299,6 +299,8 @@ private struct TrailingControls: View {
                            onEnded: { e.setVolume(($0 * 100).rounded()) })
                     .frame(width: slider)
             }
+            // Always there on a roomy bar; on a narrow one only while it runs.
+            if !compact || e.sleepTimer != .off { SleepButton() }
             OutputButton()
             let hasLyrics = LyricsCenter.shared.available(for: e.track?.videoId)
             ToolbarIconButton(system: "quote.bubble", size: 14, active: hasLyrics && app.isPanelVisible && app.showLyrics,
@@ -309,6 +311,7 @@ private struct TrailingControls: View {
             .disabled(!hasLyrics)
             .opacity(hasLyrics ? 1 : 0.35)
         }
+        .animation(.soft, value: app.engine.sleepTimer)
     }
 
     private func volumeIcon(_ e: YTMusic) -> String {

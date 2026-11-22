@@ -8,10 +8,12 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     private let theme = ThemeStore.shared
     @AppStorage("curateRadio") private var curateRadio = true
+    @AppStorage("normalizeVolume") private var leveling = true
     @AppStorage(ListeningLog.enabledKey) private var keepHistory = true
     @ViewState var historyBytes = ListeningLog.shared.byteCount
     @ViewState var language = M.chosen ?? "system"
     @ViewState var confirmErase = false
+    @ViewState var showDisliked = false
 
     var body: some View {
         @Bindable var theme = theme
@@ -22,6 +24,8 @@ struct SettingsView: View {
                 Button(M.t("Bitti", "Done")) { dismiss() }
                     .keyboardShortcut(.defaultAction)
             }
+            // Esc closes the sheet too.
+            .background(Button("") { dismiss() }.keyboardShortcut(.cancelAction).opacity(0).allowsHitTesting(false))
 
             SettingsGroup(M.t("Görünüm", "Appearance")) {
                 SettingsRow(M.t("Tema", "Theme")) {
@@ -63,6 +67,13 @@ struct SettingsView: View {
             }
 
             SettingsGroup(M.t("Dinleme", "Listening")) {
+                SettingsRow(M.t("Ses seviyesini eşitle", "Level the volume"),
+                            detail: M.t("Şarkılar aynı seviyeye getirilir; aralarında ses sıçramaz. Uygulamanın genel sesi biraz kısılır.",
+                                        "Songs are brought to the same level, so the volume doesn't jump between them. The app as a whole gets a little quieter.")) {
+                    Toggle("", isOn: $leveling).switchStyle()
+                        .onChange(of: leveling) { _, _ in app.engine.levelingChanged() }
+                }
+                RowDivider()
                 SettingsRow(M.t("Radyoyu düzenle", "Tidy up radios"),
                             detail: M.t("Resmî sürümler önce, her şarkı bir kez. Uzun setler ve seçtiğin listeler olduğu gibi kalır.",
                                         "Official versions first, each song once. Long sets and the lists you pick stay as they are.")) {
@@ -82,6 +93,16 @@ struct SettingsView: View {
                             detail: M.t("Öneriler bundan öğrenir; Mac'ten çıkmaz.", "Recommendations learn from it; it never leaves your Mac.")
                                 + " " + historySize) {
                     Toggle("", isOn: $keepHistory).switchStyle()
+                }
+                RowDivider()
+                SettingsRow(M.t("Beğenilmeyen içerik", "Disliked content"),
+                            detail: app.hiddenKeys.isEmpty
+                                ? M.t("Beğenmediğin ya da önerilmesini istemediğin bir şey yok.", "Nothing disliked or marked \"Don't recommend\".")
+                                : M.t("\(app.hiddenKeys.count) öğe; tek tek geri alabilirsin.",
+                                      "\(app.hiddenKeys.count) items; you can bring them back one by one.")) {
+                    Button(M.t("Göster…", "Show…")) { showDisliked = true }
+                        .controlSize(.small)
+                        .disabled(app.hiddenKeys.isEmpty)
                 }
                 RowDivider()
                 SettingsRow(M.t("Geçmişi sil", "Erase history")) {
@@ -131,6 +152,10 @@ struct SettingsView: View {
         .padding(20)
         .frame(width: 580)
         .fixedSize(horizontal: false, vertical: true)
+        .sheet(isPresented: $showDisliked) {
+            DislikedContentSheet()
+                .environment(app)
+        }
     }
 
     private var historySize: String {
@@ -306,3 +331,4 @@ extension Animation {
 extension AnyTransition {
     static var softReveal: AnyTransition { .opacity.combined(with: .offset(y: -6)) }
 }
+

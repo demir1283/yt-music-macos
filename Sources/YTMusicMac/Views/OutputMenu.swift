@@ -61,7 +61,9 @@ private struct OutputList: View {
     }
 }
 
-private struct OutputRow: View {
+/// One choice in a player-bar panel (sound output, sleep timer): symbol, title, optional
+/// detail, a check when selected.
+struct OutputRow: View {
     let symbol: String
     let title: String
     let detail: String?

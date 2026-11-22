@@ -545,7 +545,14 @@ final class YTMusic {
                 currentViaPlaylist = s.playlist != nil
                 resolving = false
                 failuresInARow = 0
-                player.load(url: s.playURL, headers: s.headers, duration: s.duration, autoplay: true, startAt: startAt)
+                currentLoudness = s.loudnessDb
+                player.load(url: s.playURL, headers: s.headers, duration: s.duration, autoplay: true, startAt: startAt,
+                            gain: Self.gain(for: s.loudnessDb))
+                if let db = s.loudnessDb {
+                    EngineLog.write(String(format: "Ses yüksekliği %@: %+.1f dB → kazanç %.2f", vid, db, Self.gain(for: db)))
+                } else {
+                    EngineLog.write("Ses yüksekliği \(vid): bilgi yok")
+                }
                 pushNowPlaying()
                 saveSession()
                 beginListen(e, startAt: startAt)
@@ -677,6 +684,16 @@ final class YTMusic {
 
     private func audioEnded() {
         endListen(.done)
+        // Sleep timer set to the end of this song: stop here. Play again goes on with the
+        // next song.
+        if sleepTimer == .endOfSong {
+            sleepTimer = .off
+            sleepMinutes = nil
+            isPlaying = false
+            isLoading = false
+            pushNowPlaying()
+            return
+        }
         if repeatMode == "ONE", let audio {
             audio.seek(to: 0)
             audio.play()
@@ -787,6 +804,92 @@ final class YTMusic {
         seekGuard = Date().addingTimeInterval(0.9)
         audio?.seek(to: t)
         pushNowPlaying()
+    }
+
+    // MARK: - Sleep timer
+
+    enum SleepTimer: Equatable {
+        case off
+        case at(Date)
+        case endOfSong
+    }
+
+    private(set) var sleepTimer: SleepTimer = .off
+    /// The length picked, while a timed sleep timer runs (the panel marks it).
+    private(set) var sleepMinutes: Int?
+    @ObservationIgnored private var sleepTask: Task<Void, Never>?
+    /// The sound fades out over the timer's last seconds.
+    static let sleepFade: Double = 8
+
+    func sleep(after minutes: Int) {
+        sleepTask?.cancel()
+        audio?.cancelFade()
+        let end = Date().addingTimeInterval(Double(minutes) * 60)
+        sleepTimer = .at(end)
+        sleepMinutes = minutes
+        sleepTask = Task { [weak self] in
+            let wait = end.addingTimeInterval(-YTMusic.sleepFade).timeIntervalSinceNow
+            if wait > 0 { try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000)) }
+            guard !Task.isCancelled else { return }
+            self?.fallAsleep()
+        }
+        EngineLog.write("Uyku zamanlayıcı: \(minutes) dk")
+    }
+
+    func sleepAtEndOfSong() {
+        sleepTask?.cancel()
+        sleepTask = nil
+        audio?.cancelFade()
+        sleepTimer = .endOfSong
+        sleepMinutes = nil
+    }
+
+    func cancelSleep() {
+        sleepTask?.cancel()
+        sleepTask = nil
+        audio?.cancelFade()
+        sleepTimer = .off
+        sleepMinutes = nil
+    }
+
+    private func fallAsleep() {
+        sleepTask = nil
+        guard isPlaying, let audio else { sleepTimer = .off; return }
+        audio.fadeOut(over: Self.sleepFade) { [weak self] in
+            guard let self else { return }
+            if self.isPlaying { self.togglePlay() }   // the usual pause (listening reported)
+            self.sleepTimer = .off
+            self.sleepMinutes = nil
+        }
+    }
+
+    // MARK: - Volume leveling
+    //
+    // YouTube measures every song's loudness; `loudnessDb` is how far it is above its
+    // reference level. Every song is brought to a target 6 dB below that reference: most
+    // songs measure between about −9 and +2 dB, so nearly all of them can be turned down
+    // to the same level (the player can't turn a song up past its own level; the few
+    // quieter than the target stay as they are). The whole app is somewhat quieter;
+    // the volume slider makes up for it once. Settings → Listening turns it off.
+
+    static var levelingOn: Bool { UserDefaults.standard.object(forKey: "normalizeVolume") as? Bool ?? true }
+
+    @ObservationIgnored private var currentLoudness: Double?
+
+    /// The level every song is brought to, in dB relative to YouTube's reference.
+    static let levelTarget: Double = -6
+
+    static func gain(for loudnessDb: Double?) -> Float {
+        guard levelingOn else { return 1 }
+        // A song without a measurement counts as being at the reference level.
+        let over = (loudnessDb ?? 0) - levelTarget
+        guard over > 0 else { return 1 }
+        return Float(pow(10, -over / 20))
+    }
+
+    /// The setting changed: the playing song eases to its new level.
+    func levelingChanged() {
+        audio?.setGain(Self.gain(for: currentLoudness), smoothly: true)
     }
 
     func setVolume(_ v: Double) {

@@ -121,11 +121,45 @@ final class AppModel {
     /// every page at once and stay out of the home page.
     private(set) var hiddenKeys: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "hiddenRecommendations") ?? [])
 
-    func hide(_ item: MediaItem) {
-        withAnimation(.soft) {
-            _ = hiddenKeys.insert(item.recommendationKey)
+    /// What each hidden item was, for the list in Settings → Privacy (items hidden before
+    /// 2.8 have no entry and show as an older record).
+    struct HiddenInfo: Codable, Equatable {
+        let title: String
+        let subtitle: String
+        let thumbnail: String?
+        let date: Date
+    }
+
+    private(set) var hiddenInfo: [String: HiddenInfo] = {
+        guard let data = UserDefaults.standard.data(forKey: "hiddenRecommendationInfo"),
+              let info = try? JSONDecoder().decode([String: HiddenInfo].self, from: data) else { return [:] }
+        return info
+    }()
+
+    /// Hidden items, the latest first.
+    var hiddenByDate: [String] {
+        hiddenKeys.sorted { a, b in
+            let da = hiddenInfo[a]?.date ?? .distantPast, db = hiddenInfo[b]?.date ?? .distantPast
+            return da != db ? da > db : a < b
         }
-        UserDefaults.standard.set(Array(hiddenKeys.prefix(1000)), forKey: "hiddenRecommendations")
+    }
+
+    private func saveHidden() {
+        let keep = Array(hiddenByDate.prefix(1000))
+        UserDefaults.standard.set(keep, forKey: "hiddenRecommendations")
+        let info = hiddenInfo.filter { keep.contains($0.key) }
+        if let data = try? JSONEncoder().encode(info) {
+            UserDefaults.standard.set(data, forKey: "hiddenRecommendationInfo")
+        }
+    }
+
+    func hide(_ item: MediaItem) {
+        let key = item.recommendationKey
+        withAnimation(.soft) {
+            _ = hiddenKeys.insert(key)
+            hiddenInfo[key] = HiddenInfo(title: item.title, subtitle: item.subtitle, thumbnail: item.thumbnail, date: Date())
+        }
+        saveHidden()
     }
 
     /// "Bana önerme" on a song in "Sıradaki": out of the queue at once (the engine's
@@ -135,13 +169,39 @@ final class AppModel {
         withAnimation(.soft) {
             engine.rate(videoId: v, status: "DISLIKE")
             _ = hiddenKeys.insert(v)
+            hiddenInfo[v] = HiddenInfo(title: entry.title, subtitle: entry.subtitle, thumbnail: entry.thumbnail, date: Date())
         }
-        UserDefaults.standard.set(Array(hiddenKeys.prefix(1000)), forKey: "hiddenRecommendations")
+        saveHidden()
+    }
+
+    /// Fills in what an older hidden item was (looked up when the list is shown).
+    func describeHidden(_ key: String, as info: HiddenInfo) {
+        guard hiddenKeys.contains(key), hiddenInfo[key] == nil else { return }
+        hiddenInfo[key] = info
+        saveHidden()
     }
 
     func unhide(_ item: MediaItem) {
-        withAnimation(.soft) { _ = hiddenKeys.remove(item.recommendationKey) }
-        UserDefaults.standard.set(Array(hiddenKeys), forKey: "hiddenRecommendations")
+        unhide(key: item.recommendationKey)
+    }
+
+    /// Back on every page; a disliked song is no longer disliked on YouTube either.
+    func unhide(key: String) {
+        withAnimation(.soft) {
+            _ = hiddenKeys.remove(key)
+            hiddenInfo[key] = nil
+        }
+        if engine.isDisliked(key) { engine.rate(videoId: key, status: "INDIFFERENT") }
+        saveHidden()
+    }
+
+    func unhideAll() {
+        for key in hiddenKeys where engine.isDisliked(key) { engine.rate(videoId: key, status: "INDIFFERENT") }
+        withAnimation(.soft) {
+            hiddenKeys = []
+            hiddenInfo = [:]
+        }
+        saveHidden()
     }
 
 

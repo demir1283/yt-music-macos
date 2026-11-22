@@ -1142,7 +1142,10 @@ enum BridgeScript {
           indexRange: f.indexRange ? [Number(f.indexRange.start), Number(f.indexRange.end)] : null,
           drc: !!f.isDrc,
           isDefault: f.audioTrack ? f.audioTrack.audioIsDefault !== false : true,
+          // How much louder than YouTube's reference level this file is (dB).
+          loudnessDb: typeof f.loudnessDb === 'number' ? f.loudnessDb : null,
         })),
+        loudnessDb: typeof r.playerConfig?.audioConfig?.loudnessDb === 'number' ? r.playerConfig.audioConfig.loudnessDb : null,
         hls: sd.hlsManifestUrl || null,
         sabr: !!sd.serverAbrStreamingUrl,
       };

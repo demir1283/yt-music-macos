@@ -97,3 +97,25 @@ final class AudioIndexTests: XCTestCase {
         XCTAssertNil(DashToHLS.pieces(sidx: Data([0, 1, 2]), at: 0))
     }
 }
+
+/// Volume leveling: every song is brought to 6 dB below YouTube's reference; songs
+/// already below it stay, and a song without a measurement counts as the reference.
+final class LevelingTests: XCTestCase {
+    @MainActor
+    func testSongsAboveTheTargetAreTurnedDownToIt() {
+        XCTAssertEqual(YTMusic.gain(for: 6), 0.251, accuracy: 0.001)    // −12 dB
+        XCTAssertEqual(YTMusic.gain(for: 0), 0.501, accuracy: 0.001)    // −6 dB
+        XCTAssertEqual(YTMusic.gain(for: -3), 0.708, accuracy: 0.001)   // −3 dB
+    }
+
+    @MainActor
+    func testSongsAtOrBelowTheTargetStay() {
+        XCTAssertEqual(YTMusic.gain(for: -6), 1)
+        XCTAssertEqual(YTMusic.gain(for: -9), 1)
+    }
+
+    @MainActor
+    func testUnmeasuredSongsCountAsTheReference() {
+        XCTAssertEqual(YTMusic.gain(for: nil), 0.501, accuracy: 0.001)
+    }
+}

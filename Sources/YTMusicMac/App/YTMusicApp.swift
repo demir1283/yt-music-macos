@@ -143,7 +143,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(withTitle: engine.isPlaying ? M.t("Duraklat", "Pause") : M.t("Çal", "Play"), action: #selector(dockToggle), keyEquivalent: "").target = self
         menu.addItem(withTitle: M.t("Sonraki", "Next"), action: #selector(dockNext), keyEquivalent: "").target = self
         menu.addItem(withTitle: M.t("Önceki", "Previous"), action: #selector(dockPrevious), keyEquivalent: "").target = self
+        menu.addItem(.separator())
+        let sleep = NSMenu()
+        for m in SleepChoices.minutes {
+            let item = NSMenuItem(title: SleepChoices.label(m), action: #selector(dockSleep(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = m
+            sleep.addItem(item)
+        }
+        let end = NSMenuItem(title: SleepChoices.endOfSong, action: #selector(dockSleep(_:)), keyEquivalent: "")
+        end.target = self
+        end.tag = -1
+        sleep.addItem(end)
+        if engine.sleepTimer != .off {
+            sleep.addItem(.separator())
+            let off = NSMenuItem(title: SleepChoices.turnOff, action: #selector(dockSleep(_:)), keyEquivalent: "")
+            off.target = self
+            off.tag = 0
+            sleep.addItem(off)
+        }
+        let sleepItem = NSMenuItem(title: M.t("Uyku Zamanlayıcı", "Sleep Timer"), action: nil, keyEquivalent: "")
+        sleepItem.submenu = sleep
+        menu.addItem(sleepItem)
         return menu
+    }
+
+    @objc private func dockSleep(_ item: NSMenuItem) {
+        let engine = YTMusic.shared
+        switch item.tag {
+        case 0: engine.cancelSleep()
+        case -1: engine.sleepAtEndOfSong()
+        default: engine.sleep(after: item.tag)
+        }
     }
 
     @objc private func dockToggle() { YTMusic.shared.togglePlay() }
@@ -245,6 +276,10 @@ struct AppCommands: Commands {
                 .keyboardShortcut("s", modifiers: [.command, .control])
             Button(M.t("Tekrarlama Modu", "Repeat Mode")) { model.engine.cycleRepeat() }
                 .keyboardShortcut("r", modifiers: [.command, .control])
+            Divider()
+            Menu(M.t("Uyku Zamanlayıcı", "Sleep Timer")) {
+                SleepTimerMenu(engine: model.engine)
+            }
             if !model.engine.streamInfo.isEmpty {
                 Divider()
                 Text(M.t("Kaynak: ", "Source: ") + model.engine.streamInfo)

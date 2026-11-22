@@ -15,6 +15,8 @@ struct ResolvedStream {
     var indexRange: ClosedRange<Int>?
     /// A playlist made from that index (`DashToHLS`), so a long file starts at once.
     var playlist: URL?
+    /// How much louder than YouTube's reference level the song is, in dB (volume leveling).
+    var loudnessDb: Double?
     /// What the player is given.
     var playURL: URL { playlist ?? url }
 }
@@ -136,6 +138,7 @@ enum StreamResolver {
         var stream = ResolvedStream(url: url, headers: headers, label: label, duration: duration,
                                     expires: expiry(of: url.absoluteString))
         stream.source = "signed"
+        stream.loudnessDb = best.loudnessDb ?? data.loudnessDb
         if let r = best.initRange, r.count == 2, r[0] <= r[1] { stream.initRange = r[0]...r[1] }
         if let r = best.indexRange, r.count == 2, r[0] <= r[1] { stream.indexRange = r[0]...r[1] }
         return stream
@@ -219,6 +222,8 @@ enum StreamResolver {
                                         duration: duration, expires: expiry(of: s))
             stream.initRange = byteRange(best["initRange"])
             stream.indexRange = byteRange(best["indexRange"])
+            stream.loudnessDb = (best["loudnessDb"] as? Double)
+                ?? (((root["playerConfig"] as? [String: Any])?["audioConfig"] as? [String: Any])?["loudnessDb"] as? Double)
             return stream
         }
 
