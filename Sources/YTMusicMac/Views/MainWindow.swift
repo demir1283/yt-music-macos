@@ -48,6 +48,14 @@ struct MainWindow: View {
                         ToolbarSearchField()
                     }
                     ToolbarItem(placement: .primaryAction) {
+                        Button { app.toggleInbox() } label: {
+                            Image(systemName: Inbox.shared.unseen > 0 ? "bell.badge" : "bell")
+                        }
+                        .help(Inbox.shared.unseen > 0
+                              ? M.t("Bildirimler: \(Inbox.shared.unseen) yeni", "Notifications: \(Inbox.shared.unseen) new")
+                              : M.t("Bildirimler", "Notifications"))
+                    }
+                    ToolbarItem(placement: .primaryAction) {
                         Button { app.togglePanel() } label: {
                             Image(systemName: "sidebar.right")
                         }
@@ -67,6 +75,21 @@ struct MainWindow: View {
             }
             .animation(.spring(response: 0.45, dampingFraction: 0.88), value: app.isPanelVisible)
 
+
+            // The notifications panel, at the top right under the bell; a click anywhere
+            // else closes it.
+            if app.showInbox {
+                Color.black.opacity(0.001)
+                    .contentShape(Rectangle())
+                    .onTapGesture { app.closeInbox() }
+                    .zIndex(4)
+                InboxPanel(maxHeight: max(260, root.size.height - 140))
+                    .padding(.top, 6)
+                    .padding(.trailing, density.gutter + 4)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .transition(.softReveal)
+                    .zIndex(5)
+            }
 
             if !engine.booted && engine.loadError != nil {
                 BootOverlay().zIndex(3)

@@ -333,6 +333,21 @@ final class AppModel {
         }
     }
 
+    /// The notifications panel under the bell at the top right.
+    var showInbox = false
+
+    func toggleInbox() {
+        if showInbox { closeInbox(); return }
+        Inbox.shared.refreshIfStale()
+        withAnimation(.soft) { showInbox = true }
+    }
+
+    func closeInbox() {
+        guard showInbox else { return }
+        withAnimation(.soft) { showInbox = false }
+        Inbox.shared.markSeen()
+    }
+
     func togglePanel() {
         withAnimation(.spring(response: 0.45, dampingFraction: 0.88)) { panelVisible.toggle() }
     }

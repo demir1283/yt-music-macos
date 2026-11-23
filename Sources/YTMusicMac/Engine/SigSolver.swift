@@ -153,11 +153,22 @@ enum EngineLog {
     static let enabled = UserDefaults.standard.bool(forKey: "diagnosticLog")
     private static let url: URL = Bundle.main.bundleURL.deletingLastPathComponent()
         .appendingPathComponent("YT Music.log")
+    /// The session before this one, kept so that a problem isn't lost by restarting.
+    private static let previousURL: URL = url.deletingLastPathComponent()
+        .appendingPathComponent("YT Music (önceki).log")
     private static let queue = DispatchQueue(label: "ytmusic.log")
 
+    /// A new session: the last one's log becomes "YT Music (önceki).log", this one starts empty.
     static func reset() {
         guard enabled else { return }
-        queue.async { try? Data().write(to: url) }
+        queue.async {
+            let fm = FileManager.default
+            if fm.fileExists(atPath: url.path) {
+                try? fm.removeItem(at: previousURL)
+                try? fm.moveItem(at: url, to: previousURL)
+            }
+            try? Data().write(to: url)
+        }
     }
 
     static func write(_ message: String) {

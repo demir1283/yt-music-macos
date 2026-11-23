@@ -168,3 +168,54 @@ final class ListeningSummaryTests: XCTestCase {
         XCTAssertTrue(ListeningSummary(plays: [], period: .week, now: now, calendar: utc).isEmpty)
     }
 }
+
+/// Crossfade: where songs may overlap, and the curve they overlap with.
+final class CrossfadeTests: XCTestCase {
+    private func entry(_ id: String, _ duration: String, album: String? = nil) -> QueueEntry {
+        QueueEntry(index: 0, title: id, subtitle: "", duration: duration, thumbnail: nil, selected: false,
+                   videoId: id, album: album.map { AlbumRef(name: $0, id: $0) })
+    }
+
+    @MainActor
+    func testOrdinarySongsMayOverlap() {
+        XCTAssertTrue(YTMusic.mayCrossfade(from: entry("a", "3:45"), to: entry("b", "4:10"),
+                                           repeatOne: false, sleepAtEnd: false))
+        XCTAssertTrue(YTMusic.mayCrossfade(from: entry("a", "3:45", album: "X"), to: entry("b", "4:10", album: "Y"),
+                                           repeatOne: false, sleepAtEnd: false))
+    }
+
+    @MainActor
+    func testNoOverlapWhereTheSongsShouldStayApart() {
+        let a = entry("a", "3:45"), b = entry("b", "4:10")
+        XCTAssertFalse(YTMusic.mayCrossfade(from: a, to: b, repeatOne: true, sleepAtEnd: false))
+        XCTAssertFalse(YTMusic.mayCrossfade(from: a, to: b, repeatOne: false, sleepAtEnd: true))
+        // Into or out of a long set.
+        XCTAssertFalse(YTMusic.mayCrossfade(from: entry("a", "1:02:00"), to: b, repeatOne: false, sleepAtEnd: false))
+        XCTAssertFalse(YTMusic.mayCrossfade(from: a, to: entry("b", "45:00"), repeatOne: false, sleepAtEnd: false))
+        // Very short songs.
+        XCTAssertFalse(YTMusic.mayCrossfade(from: entry("a", "0:20"), to: b, repeatOne: false, sleepAtEnd: false))
+        // Consecutive songs of one album.
+        XCTAssertFalse(YTMusic.mayCrossfade(from: entry("a", "3:45", album: "X"), to: entry("b", "4:10", album: "X"),
+                                            repeatOne: false, sleepAtEnd: false))
+    }
+
+    @MainActor
+    func testTheButtonStepsThroughTheLengthsThenTurnsOff() {
+        XCTAssertEqual(CrossfadeButton.step(after: 0), 3)
+        XCTAssertEqual(CrossfadeButton.step(after: 3), 6)
+        XCTAssertEqual(CrossfadeButton.step(after: 9), 12)
+        XCTAssertEqual(CrossfadeButton.step(after: 12), 0)
+        XCTAssertEqual(CrossfadeButton.step(after: 5), 3)   // an unknown value starts over
+    }
+
+    func testCurveKeepsThePowerEven() {
+        for t in stride(from: Float(0), through: 1, by: 0.125) {
+            let c = AudioPlayer.crossfadeCurve(t)
+            XCTAssertEqual(c.incoming * c.incoming + c.outgoing * c.outgoing, 1, accuracy: 0.0001)
+        }
+        XCTAssertEqual(AudioPlayer.crossfadeCurve(0).incoming, 0, accuracy: 0.0001)
+        XCTAssertEqual(AudioPlayer.crossfadeCurve(0).outgoing, 1, accuracy: 0.0001)
+        XCTAssertEqual(AudioPlayer.crossfadeCurve(1).incoming, 1, accuracy: 0.0001)
+        XCTAssertEqual(AudioPlayer.crossfadeCurve(1).outgoing, 0, accuracy: 0.0001)
+    }
+}

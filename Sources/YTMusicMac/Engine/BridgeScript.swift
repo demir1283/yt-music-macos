@@ -840,7 +840,17 @@ enum BridgeScript {
           next = ytNextToken(c);
         } catch (e) { break; }
       }
-      return { items: uniqueYt(items), musicOnly: false };
+      const out = { items: uniqueYt(items), musicOnly: false };
+      if (!out.items.length) {
+        // Nothing read: the answer's shape (keys only) for the diagnostic log.
+        const tabs = findKey(r, 'tabs');
+        out.summary = 'anahtarlar: ' + Object.keys(r || {}).sort().join(',')
+          + (tabs ? '; sekme ' + (Array.isArray(tabs) ? tabs.length : '?') : '')
+          + (findKey(r, 'richGridRenderer') ? '; richGrid' : '')
+          + (findKey(r, 'lockupViewModel') ? '; lockup' : '')
+          + (findKey(r, 'videoRenderer') ? '; videoRenderer' : '');
+      }
+      return out;
     },
 
     // The bell's notifications, newest first, back to `days` days (the home page marks the

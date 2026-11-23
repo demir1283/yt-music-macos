@@ -40,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         StorageCleanup.run()
         _ = YTMusic.shared   // start loading YouTube Music right away
         Updater.shared.start()
+        Inbox.shared.start()
 
         // Space bar = play/pause, unless the user is typing somewhere.
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
@@ -126,9 +127,81 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return true
     }
 
+    /// Settings → General: ask before quitting while music plays (on by default).
+    nonisolated static let confirmQuitKey = "confirmQuitWhilePlaying"
+    /// The app's own relaunches (an update, a language change) quit without asking.
+    static var quitWithoutAsking = false
+
+    /// While music plays: asks first (unless turned off, or the Mac is logging out,
+    /// restarting or shutting down), then lets the sound fade out before quitting.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let engine = YTMusic.shared
+        guard engine.isPlaying, engine.track != nil else {
+            isTerminating = true
+            return .terminateNow
+        }
+        let ask = UserDefaults.standard.object(forKey: Self.confirmQuitKey) as? Bool ?? true
+        if ask, !Self.quitWithoutAsking, !Self.systemIsEndingSession, !Self.quitComesFromAnotherProgram,
+           !confirmQuit() {
+            return .terminateCancel
+        }
         isTerminating = true
-        return .terminateNow
+        quitReplyPending = true
+        engine.fadeOutForQuit { [weak self] in self?.replyToQuit() }
+        // In case the fade never reports back.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            MainActor.assumeIsolated { AppDelegate.shared?.replyToQuit() }
+        }
+        return .terminateLater
+    }
+
+    /// Quitting waits for the sound to fade out; this lets it go on (once).
+    private var quitReplyPending = false
+    private func replyToQuit() {
+        guard quitReplyPending else { return }
+        quitReplyPending = false
+        NSApp.reply(toApplicationShouldTerminate: true)
+    }
+
+    private func confirmQuit() -> Bool {
+        let alert = NSAlert()
+        alert.messageText = M.t("Müzik çalıyor. YT Music'ten çıkılsın mı?", "Music is playing. Quit YT Music?")
+        alert.informativeText = M.t("Çalan şarkı durur. Bu soruyu Ayarlar → Genel'den kapatabilirsin.",
+                                    "The song playing stops. You can turn this question off in Settings → General.")
+        alert.addButton(withTitle: M.t("Çık", "Quit"))
+        alert.addButton(withTitle: M.t("Vazgeç", "Cancel"))
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = M.t("Bir daha sorma", "Don't ask again")
+        NSApp.activate(ignoringOtherApps: true)
+        let quit = alert.runModal() == .alertFirstButtonReturn
+        if quit, alert.suppressionButton?.state == .on {
+            UserDefaults.standard.set(false, forKey: Self.confirmQuitKey)
+        }
+        return quit
+    }
+
+    /// The quit was sent by another program — a script, `build.sh` (also during an update
+    /// from inside the app), an installer — rather than by the listener (⌘Q, the menu, the
+    /// Dock): it isn't held up by a question.
+    private static var quitComesFromAnotherProgram: Bool {
+        guard let event = NSAppleEventManager.shared().currentAppleEvent,
+              event.eventClass == AEEventClass(kCoreEventClass),
+              event.eventID == AEEventID(kAEQuitApplication),
+              let pid = event.attributeDescriptor(forKeyword: AEKeyword(keySenderPIDAttr))?.int32Value,
+              pid > 0, pid != ProcessInfo.processInfo.processIdentifier
+        else { return false }
+        return NSRunningApplication(processIdentifier: pid)?.bundleIdentifier != "com.apple.dock"
+    }
+
+    /// The quit comes from the Mac logging out, restarting or shutting down.
+    private static var systemIsEndingSession: Bool {
+        guard let event = NSAppleEventManager.shared().currentAppleEvent,
+              event.eventClass == AEEventClass(kCoreEventClass),
+              event.eventID == AEEventID(kAEQuitApplication),
+              let reason = event.attributeDescriptor(forKeyword: AEKeyword(kAEQuitReason))?.enumCodeValue
+        else { return false }
+        let ending = [kAELogOut, kAEReallyLogOut, kAEShowRestartDialog, kAERestart, kAEShowShutdownDialog, kAEShutDown]
+        return ending.contains { OSType($0) == reason }
     }
 
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
@@ -241,6 +314,7 @@ enum M {
         do { try task.run() } catch { return }
         // macOS doesn't quit while a sheet is open on a window: close Settings first.
         AppModel.shared.showSettings = false
+        AppDelegate.quitWithoutAsking = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { NSApp.terminate(nil) }
     }
 }

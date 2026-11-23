@@ -380,10 +380,12 @@ enum PersonalHome {
     /// YouTube's subscriptions feed. The bell itself carries almost only Shorts, so it only
     /// marks the uploads it announced and you haven't read.
     ///
+    /// Also the bell's list at the top right (Inbox).
+    ///
     /// A channel counts as music when you follow it as an artist on YouTube Music, when you
     /// listened to it in the app, or when its video is in YouTube's Music category (looked
     /// up once per channel, newest uploads first, and kept for the session).
-    private static func notificationItems(_ engine: YTMusic, _ notes: [YouTubeNotification], uploads: [YouTubeVideo],
+    static func notificationItems(_ engine: YTMusic, _ notes: [YouTubeNotification], uploads: [YouTubeVideo],
                                           artistIds: Set<String>, heardIds: Set<String>) async -> [MediaItem] {
         var seen = Set<String>()
         let recent = uploads.filter { u in
@@ -462,7 +464,7 @@ enum PersonalHome {
         }
     }
 
-    private static func loadNotifications(_ engine: YTMusic) async -> NotificationFeed? {
+    static func loadNotifications(_ engine: YTMusic) async -> NotificationFeed? {
         do {
             return try await engine.youtubeNotifications(days: notificationDays)
         } catch {

@@ -10,6 +10,15 @@ import AVFoundation
 /// wait in a second, silent player (`Standby`, ~320 KB); when that song comes up, the
 /// standby player simply takes over, so the change is immediate instead of waiting for the
 /// first bytes to download.
+///
+/// Crossfade: when the setting is on, the standby player starts `crossfade` seconds before
+/// the playing song ends and the two overlap — one turned down, the other up — until the
+/// old one is let go (see `beginCrossfade`).
+///
+/// Nothing starts or stops abruptly: playing comes in over `softSeconds`, pausing goes out
+/// over it, and a song cut short by another (a click, a skip) fades out in its own player
+/// while the new one comes in (see `release`). A song that simply ends hands over to the
+/// next as it is, so the next one's first beat isn't softened.
 @MainActor
 final class AudioPlayer {
     private var player = AVPlayer()
@@ -32,6 +41,15 @@ final class AudioPlayer {
     var onState: ((_ playing: Bool, _ buffering: Bool) -> Void)?
     var onEnded: (() -> Void)?
     var onFailed: ((String) -> Void)?
+    /// The playing song is `crossfade` seconds from its end and the next one is ready: the
+    /// engine may start it now with `load(…, crossfade:)`.
+    var onCrossfade: (() -> Void)?
+
+    /// Seconds the songs overlap (0: off). Set by the engine from the setting.
+    var crossfade: Double = 0
+    /// The current song has already offered its crossfade (once per song, again after a
+    /// seek back).
+    private var crossfadeOffered = false
 
     /// The listener's volume, 0…100. What the player gets is this times the song's `gain`.
     var volume: Double {
@@ -43,9 +61,13 @@ final class AudioPlayer {
     }
     private var userVolume: Float = 1
 
-    /// What the player plays at: the listener's volume, the song's leveling and the sleep
-    /// timer's fade.
-    private func applyVolume() { player.volume = userVolume * gain * fade }
+    /// What the players play at: the listener's volume, each song's leveling, the sleep
+    /// timer's fade and, during a crossfade, how far it has come.
+    private func applyVolume() {
+        let curve = Self.crossfadeCurve(mix)
+        player.volume = userVolume * gain * fade * ease * curve.incoming
+        outgoing?.volume = userVolume * outgoingGain * fade * curve.outgoing
+    }
 
     /// Volume leveling for the playing song: 1 leaves it as it is, below 1 turns a loud
     /// master down to YouTube's reference level. Changed mid-song, it eases over ~0.4 s.
@@ -130,9 +152,192 @@ final class AudioPlayer {
         }
     }
 
+    // MARK: Soft start and stop
+
+    /// How long playing, pausing and changing songs take to come in or go out.
+    static let softSeconds: Double = 0.4
+    private static let softSteps = 16
+
+    /// The playing song's own fade in and out (0…1), and the one under way.
+    private var ease: Float = 1
+    private var easeStart: Float = 1
+    private var easeEnd: Float = 1
+    private var easeStep = 0
+    private var easeTimer: Timer?
+    private var easeDone: (() -> Void)?
+    /// The loaded song comes in softly once its sound really starts.
+    private var easeInOnStart = false
+
+    /// A repeating timer that also runs while a menu is open, the window is being
+    /// scrolled, or the app waits to quit (common run-loop modes).
+    private static func repeating(_ interval: Double, _ block: @escaping @Sendable (Timer) -> Void) -> Timer {
+        let timer = Timer(timeInterval: interval, repeats: true, block: block)
+        RunLoop.main.add(timer, forMode: .common)
+        return timer
+    }
+
+    private func easeVolume(to target: Float, then done: (() -> Void)? = nil) {
+        easeTimer?.invalidate()
+        easeTimer = nil
+        easeDone = done
+        guard abs(target - ease) > 0.001 else {
+            ease = target
+            applyVolume()
+            easeDone = nil
+            done?()
+            return
+        }
+        easeStart = ease
+        easeEnd = target
+        easeStep = 0
+        easeTimer = Self.repeating(Self.softSeconds / Double(Self.softSteps)) { [weak self] _ in
+            MainActor.assumeIsolated { self?.easeTick() }
+        }
+    }
+
+    private func easeTick() {
+        easeStep += 1
+        let t = Float(easeStep) / Float(Self.softSteps)
+        ease = easeStart + (easeEnd - easeStart) * (t * t * (3 - 2 * t))
+        applyVolume()
+        guard easeStep >= Self.softSteps else { return }
+        easeTimer?.invalidate()
+        easeTimer = nil
+        let done = easeDone
+        easeDone = nil
+        done?()
+    }
+
+    /// Stops a fade under way (and what was to follow it, such as the pause).
+    private func cancelEase() {
+        easeTimer?.invalidate()
+        easeTimer = nil
+        easeDone = nil
+    }
+
+    /// Players let go while still sounding: each fades out from where it is, then stops.
+    private struct Fading {
+        let player: AVPlayer
+        let start: Float
+        var step = 0
+        var timer: Timer?
+    }
+    private var fading: [ObjectIdentifier: Fading] = [:]
+
+    private func release(_ old: AVPlayer) {
+        let id = ObjectIdentifier(old)
+        guard fading[id] == nil else { return }
+        guard old.timeControlStatus != .paused, old.volume > 0.001 else {
+            Self.stopNow(old)
+            return
+        }
+        var f = Fading(player: old, start: old.volume)
+        f.timer = Self.repeating(Self.softSeconds / Double(Self.softSteps)) { [weak self] _ in
+            MainActor.assumeIsolated { self?.releaseTick(id) }
+        }
+        fading[id] = f
+    }
+
+    private func releaseTick(_ id: ObjectIdentifier) {
+        guard var f = fading[id] else { return }
+        f.step += 1
+        let t = Float(f.step) / Float(Self.softSteps)
+        f.player.volume = f.start * (1 - t * t * (3 - 2 * t))
+        if f.step >= Self.softSteps {
+            f.timer?.invalidate()
+            fading[id] = nil
+            Self.stopNow(f.player)
+        } else {
+            fading[id] = f
+        }
+    }
+
+    private static func stopNow(_ p: AVPlayer) {
+        p.pause()
+        p.replaceCurrentItem(with: nil)
+    }
+
+    /// Makes `next` the playing player (same mute and output, observed) and returns the
+    /// one it replaces, still as it was.
+    private func swapPlayer(to next: AVPlayer) -> AVPlayer {
+        let old = player
+        detachPlayerObservers()
+        player = next
+        next.isMuted = old.isMuted
+        next.audioOutputDeviceUniqueID = outputDeviceUID
+        attachPlayerObservers()
+        return old
+    }
+
+    // MARK: Crossfade
+
+    /// The song being faded out, its leveling, and how far the crossfade has come (0…1;
+    /// 1 when none runs).
+    private var outgoing: AVPlayer?
+    private var outgoingGain: Float = 1
+    private var mix: Float = 1
+    private var mixTimer: Timer?
+    private var mixStep = 0
+    private var mixSteps = 1
+    private static let mixRate: Double = 20   // volume steps per second
+
+    /// Equal-power curve: the sum of the two songs' power stays the same through the
+    /// change, so the sound doesn't dip in the middle.
+    nonisolated static func crossfadeCurve(_ t: Float) -> (incoming: Float, outgoing: Float) {
+        let x = min(1, max(0, t)) * .pi / 2
+        return (sin(x), cos(x))
+    }
+
+    /// The next song is ready and loaded enough to start now.
+    private var nextIsReady: Bool {
+        guard let item = standby?.player.currentItem, item.status == .readyToPlay else { return false }
+        let needed = min(crossfade, Self.standbySeconds) - 1
+        return item.loadedTimeRanges.contains { $0.timeRangeValue.end.seconds >= needed }
+    }
+
+    /// The address of the prepared next song, if one is waiting.
+    var preparedURL: URL? { standby?.url }
+
+    private func beginCrossfade(from old: AVPlayer, oldGain: Float, over seconds: Double) {
+        outgoing = old
+        outgoingGain = oldGain
+        mix = 0
+        mixStep = 0
+        mixSteps = max(1, Int(seconds * Self.mixRate))
+        mixTimer = Self.repeating(1 / Self.mixRate) { [weak self] _ in
+            MainActor.assumeIsolated { self?.mixTick() }
+        }
+        EngineLog.write(String(format: "Geçiş: %.0f sn", seconds))
+    }
+
+    private func mixTick() {
+        mixStep += 1
+        mix = Float(mixStep) / Float(mixSteps)
+        applyVolume()
+        if mixStep >= mixSteps { endCrossfade() }
+    }
+
+    /// Lets the old song go: at the end of the crossfade, or (fading out quickly) when the
+    /// listener pauses, seeks or plays something else.
+    private func endCrossfade() {
+        mixTimer?.invalidate()
+        mixTimer = nil
+        if let old = outgoing {
+            outgoing = nil
+            release(old)
+        }
+        if mix != 1 {
+            mix = 1
+            applyVolume()
+        }
+    }
+
     var isMuted: Bool {
         get { player.isMuted }
-        set { player.isMuted = newValue }
+        set {
+            player.isMuted = newValue
+            outgoing?.isMuted = newValue
+        }
     }
 
     /// CoreAudio UID of the device to play to; nil follows the system output. The waiting
@@ -140,6 +345,7 @@ final class AudioPlayer {
     var outputDeviceUID: String? {
         didSet {
             player.audioOutputDeviceUniqueID = outputDeviceUID
+            outgoing?.audioOutputDeviceUniqueID = outputDeviceUID
             standby?.player.audioOutputDeviceUniqueID = outputDeviceUID
         }
     }
@@ -233,9 +439,19 @@ final class AudioPlayer {
         standby = nil
     }
 
+    /// `crossfade` > 0: the prepared next song starts under the playing one, which fades
+    /// out over that many seconds (when the next song isn't the prepared one, the change is
+    /// immediate as usual).
     func load(url: URL, headers: [String: String], duration: Double, autoplay: Bool, startAt: Double = 0,
-              gain: Float = 1) {
-        setGain(gain, smoothly: false)
+              gain: Float = 1, crossfade: Double = 0) {
+        endCrossfade()
+        // The song before ended by itself: the change is as it is. Otherwise it was cut
+        // short: it fades out, and this one comes in.
+        let natural = finished
+        cancelEase()
+        // The new song's leveling applies once the old one has its own player (it fades
+        // out at its own level).
+        let previousGain = self.gain
         if EngineLog.enabled {
             loadedAt = Date()
             toldWait = nil
@@ -244,16 +460,30 @@ final class AudioPlayer {
         }
         clearItemObservers()
         finished = false
+        crossfadeOffered = false
         knownDuration = duration
         // The next song was prepared: its player takes over with the opening already loaded.
         if let s = standby, s.url == url, startAt <= 1, let item = s.player.currentItem, item.status != .failed {
             standby = nil
-            takeOver(s.player, item: item, autoplay: autoplay)
+            takeOver(s.player, item: item, autoplay: autoplay, gain: gain,
+                     crossfade: crossfade, previousGain: previousGain, soft: !natural)
             return
         }
         discardNext()
         let item = Self.makeItem(url: url, headers: headers, buffer: Self.playingSeconds)
-        player.replaceCurrentItem(with: item)
+        if player.timeControlStatus != .paused {
+            // The old song still sounds: it fades out in its own player, the new one gets
+            // a fresh player.
+            let fresh = AVPlayer()
+            fresh.automaticallyWaitsToMinimizeStalling = true
+            fresh.allowsExternalPlayback = false
+            fresh.replaceCurrentItem(with: item)
+            release(swapPlayer(to: fresh))
+        } else {
+            player.replaceCurrentItem(with: item)
+        }
+        setGain(gain, smoothly: false)
+        comeIn(softly: !natural && autoplay)
         observe(item)
         if startAt > 1 {
             pendingStart = (startAt, autoplay)
@@ -264,22 +494,32 @@ final class AudioPlayer {
     }
 
     /// Makes the standby player the playing one (same volume and mute), and lets the old
-    /// one go.
-    private func takeOver(_ next: AVPlayer, item: AVPlayerItem, autoplay: Bool) {
-        let old = player
-        detachPlayerObservers()
-        old.pause()
-        old.replaceCurrentItem(with: nil)
-        next.volume = userVolume * self.gain * fade
-        next.isMuted = old.isMuted
-        next.audioOutputDeviceUniqueID = outputDeviceUID
-        player = next
-        attachPlayerObservers()
+    /// one go: over `crossfade` seconds under the new one, quickly if it was cut short
+    /// (`soft`), or at once at its natural end.
+    private func takeOver(_ next: AVPlayer, item: AVPlayerItem, autoplay: Bool, gain: Float,
+                          crossfade: Double = 0, previousGain: Float = 1, soft: Bool = false) {
+        let crossfades = crossfade > 0 && autoplay && player.timeControlStatus != .paused
+        let old = swapPlayer(to: next)
+        if crossfades {
+            beginCrossfade(from: old, oldGain: previousGain, over: crossfade)
+        } else {
+            release(old)
+        }
+        setGain(gain, smoothly: false)
+        comeIn(softly: soft && !crossfades && autoplay)
         item.preferredForwardBufferDuration = Self.playingSeconds
         pendingStart = nil
         observe(item)
         if autoplay { player.play() }
         stateChanged()
+    }
+
+    /// The new song's own level: from silence, rising once its sound starts (`softly`), or
+    /// straight away.
+    private func comeIn(softly: Bool) {
+        ease = softly ? 0 : 1
+        easeInOnStart = softly
+        applyVolume()
     }
 
     private func observe(_ item: AVPlayerItem) {
@@ -323,15 +563,48 @@ final class AudioPlayer {
         }
     }
 
-    func play() { player.play() }
-    func pause() { player.pause() }
+    /// Plays on: from a pause it comes in softly once the sound starts; during a pause
+    /// still fading out it simply comes back up.
+    func play() {
+        cancelEase()
+        if player.timeControlStatus == .paused {
+            comeIn(softly: true)
+        } else {
+            easeInOnStart = false
+            easeVolume(to: 1)
+        }
+        player.play()
+    }
+
+    /// Pauses after fading out; `done` follows the pause (quitting waits for it).
+    func pause(then done: (() -> Void)? = nil) {
+        endCrossfade()
+        easeInOnStart = false
+        let p = player
+        // Already silent (paused, or the sleep timer's fade has just ended): at once.
+        guard p.timeControlStatus != .paused, ease > 0.001, fade > 0.001 else {
+            cancelEase()
+            p.pause()
+            done?()
+            return
+        }
+        easeVolume(to: 0) {
+            p.pause()
+            done?()
+        }
+    }
 
     func seek(to seconds: Double) {
+        endCrossfade()
         finished = false
+        crossfadeOffered = false
         player.seek(to: CMTime(seconds: max(0, seconds), preferredTimescale: 600))
     }
 
     func stop() {
+        endCrossfade()
+        cancelEase()
+        easeInOnStart = false
         discardNext()
         clearItemObservers()
         currentID = nil
@@ -351,6 +624,12 @@ final class AudioPlayer {
     private func tick(_ seconds: Double) {
         guard seconds.isFinite, currentID != nil else { return }
         onTime?(seconds)
+        // Near the end, with the next song ready: offer the crossfade (once).
+        if crossfade > 0, !crossfadeOffered, knownDuration > crossfade * 3,
+           seconds >= knownDuration - crossfade, outgoing == nil, nextIsReady {
+            crossfadeOffered = true
+            onCrossfade?()
+        }
         // Some streams report a longer duration than the real one: end on the known length.
         if knownDuration > 1, seconds >= knownDuration - 0.05, let id = currentID { finish(id) }
     }
@@ -372,6 +651,10 @@ final class AudioPlayer {
                                        Date().timeIntervalSince(t), (event?.observedBitrate ?? 0) / 1000,
                                        event?.numberOfBytesTransferred ?? 0, bufferedAhead))
             }
+        }
+        if status == .playing, easeInOnStart {
+            easeInOnStart = false
+            easeVolume(to: 1)
         }
         onState?(status != .paused, status == .waitingToPlayAtSpecifiedRate)
     }

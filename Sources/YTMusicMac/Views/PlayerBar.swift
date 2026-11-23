@@ -271,6 +271,7 @@ private struct TrailingControls: View {
     /// Width of the volume slider.
     var slider: CGFloat = 80
     @Environment(AppModel.self) private var app
+    @AppStorage(YTMusic.crossfadeKey) private var crossfade = 0
 
     var body: some View {
         let e = app.engine
@@ -299,7 +300,8 @@ private struct TrailingControls: View {
                            onEnded: { e.setVolume(($0 * 100).rounded()) })
                     .frame(width: slider)
             }
-            // Always there on a roomy bar; on a narrow one only while it runs.
+            // Always there on a roomy bar; on a narrow one only while on.
+            if !compact || crossfade > 0 { CrossfadeButton() }
             if !compact || e.sleepTimer != .off { SleepButton() }
             OutputButton()
             let hasLyrics = LyricsCenter.shared.available(for: e.track?.videoId)

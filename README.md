@@ -119,7 +119,7 @@ If you edit `Tools/bridge.js`, `./build.sh` (or `Tools/gen-bridge.sh`) writes it
 <summary><b>Troubleshooting</b></summary>
 
 - **Pages stay empty:** use **Reconnect** in the View menu. If YouTube shows a consent page, open YouTube Music in the browser once (⇧⌘Y).
-- **Diagnostic log:** `defaults write io.github.demir1283.ytmusic diagnosticLog -bool true` writes `YT Music.log` next to the app; `defaults delete io.github.demir1283.ytmusic diagnosticLog` turns it off. Read the log before sharing it.
+- **Diagnostic log:** `defaults write io.github.demir1283.ytmusic diagnosticLog -bool true` writes `YT Music.log` next to the app (the previous session's is kept as `YT Music (önceki).log`); `defaults delete io.github.demir1283.ytmusic diagnosticLog` turns it off. Read the log before sharing it.
 - **Upgrading from 1.0:** sign in once more; settings start fresh.
 </details>
 

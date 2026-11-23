@@ -9,6 +9,7 @@ struct SettingsView: View {
     private let theme = ThemeStore.shared
     @AppStorage("curateRadio") private var curateRadio = true
     @AppStorage("normalizeVolume") private var leveling = true
+    @AppStorage(AppDelegate.confirmQuitKey) private var confirmQuit = true
     @AppStorage(ListeningLog.enabledKey) private var keepHistory = true
     @ViewState var historyBytes = ListeningLog.shared.byteCount
     @ViewState var language = M.chosen ?? "system"
@@ -142,6 +143,12 @@ struct SettingsView: View {
                             .controlSize(.small)
                     }
                     .transition(.softReveal)
+                }
+                RowDivider()
+                SettingsRow(M.t("Çalarken çıkmadan önce sor", "Ask before quitting while playing"),
+                            detail: M.t("Müzik çalarken ⌘Q'ya basınca onay ister; böylece müzik yanlışlıkla kesilmez.",
+                                        "Asks first when you press ⌘Q with music playing, so it doesn't stop by accident.")) {
+                    Toggle("", isOn: $confirmQuit).switchStyle()
                 }
                 RowDivider()
                 UpdateRows()

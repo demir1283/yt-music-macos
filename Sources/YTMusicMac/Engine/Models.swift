@@ -279,6 +279,8 @@ struct YouTubeFeed: Decodable {
     let items: [YouTubeVideo]
     /// Filtered to music by YouTube itself.
     let musicOnly: Bool
+    /// When nothing came: the answer's shape (keys only, no content), for the diagnostic log.
+    var summary: String? = nil
 }
 
 struct YouTubeVideo: Decodable {

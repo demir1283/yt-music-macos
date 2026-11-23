@@ -456,6 +456,8 @@ final class YTMusic {
         a.onState = { [weak self] playing, buffering in self?.audioState(playing: playing, buffering: buffering) }
         a.onEnded = { [weak self] in self?.audioEnded() }
         a.onFailed = { [weak self] message in self?.audioFailed(message) }
+        a.onCrossfade = { [weak self] in self?.crossfadeToNext() }
+        a.crossfade = Self.crossfadeSeconds
         audio = a
         return a
     }
@@ -504,9 +506,11 @@ final class YTMusic {
         "{\"watchEndpoint\":{\"videoId\":\"\(videoId)\"}}"
     }
 
-    private func startTrack(_ index: Int, startAt: Double = 0) {
+    /// `crossfade` > 0: the song before keeps playing and fades out under this one (see
+    /// crossfadeToNext); it counts as heard to the end.
+    private func startTrack(_ index: Int, startAt: Double = 0, crossfade: Double = 0) {
         guard items.indices.contains(index) else { return }
-        endListen(.skip)
+        endListen(crossfade > 0 ? .done : .skip)
         playToken += 1
         let token = playToken
         queueIndex = index
@@ -515,7 +519,7 @@ final class YTMusic {
         guard let vid = e.videoId else { advance(); return }
         let player = ensureAudio()
         resolving = true
-        player.pause()
+        if crossfade == 0 { player.pause() }
         let requested = Date()
         playRequestedAt = requested
         EngineLog.write("Çalma isteği \(vid)\(startAt > 1 ? " (\(Int(startAt)). sn'den)" : "")")
@@ -547,7 +551,7 @@ final class YTMusic {
                 failuresInARow = 0
                 currentLoudness = s.loudnessDb
                 player.load(url: s.playURL, headers: s.headers, duration: s.duration, autoplay: true, startAt: startAt,
-                            gain: Self.gain(for: s.loudnessDb))
+                            gain: Self.gain(for: s.loudnessDb), crossfade: crossfade)
                 if let db = s.loudnessDb {
                     EngineLog.write(String(format: "Ses yüksekliği %@: %+.1f dB → kazanç %.2f", vid, db, Self.gain(for: db)))
                 } else {
@@ -861,6 +865,56 @@ final class YTMusic {
             self.sleepTimer = .off
             self.sleepMinutes = nil
         }
+    }
+
+    // MARK: - Crossfade
+    //
+    // The crossfade button in the player bar: 0 (off), 3, 6, 9 or 12 seconds. Near
+    // the end of a song the player offers the change (the next song must already be
+    // waiting in its standby player); it happens only where the songs aren't meant to run
+    // into each other or the listener wants a clean stop.
+
+    static let crossfadeKey = "crossfadeSeconds"
+    static let crossfadeChoices = [0, 3, 6, 9, 12]
+    static var crossfadeSeconds: Double { Double(UserDefaults.standard.integer(forKey: crossfadeKey)) }
+
+    /// Whether the change from `current` to `next` may overlap: not when one song repeats,
+    /// when the sleep timer waits for this song's end, into or out of a long set (sets are
+    /// mixes of their own), with very short songs, or between consecutive songs of the same
+    /// album (live and DJ albums run into each other as recorded).
+    nonisolated static func mayCrossfade(from current: QueueEntry, to next: QueueEntry,
+                                         repeatOne: Bool, sleepAtEnd: Bool) -> Bool {
+        guard !repeatOne, !sleepAtEnd, current.videoId != nil, next.videoId != nil else { return false }
+        if QueueCurator.isSet(current) || QueueCurator.isSet(next) { return false }
+        if (current.seconds > 0 && current.seconds < 30) || (next.seconds > 0 && next.seconds < 30) { return false }
+        if let album = current.album?.id, !album.isEmpty, album == next.album?.id { return false }
+        return true
+    }
+
+    /// The player says the end is near and the next song is ready: start it, overlapping.
+    private func crossfadeToNext() {
+        let length = Self.crossfadeSeconds
+        let n = queueIndex + 1
+        guard length > 0, isPlaying, let audio, items.indices.contains(queueIndex), items.indices.contains(n),
+              Self.mayCrossfade(from: items[queueIndex], to: items[n],
+                                repeatOne: repeatMode == "ONE", sleepAtEnd: sleepTimer == .endOfSong),
+              let next = items[n].videoId, let s = streams[next], s.expires > Date(),
+              audio.preparedURL == s.playURL
+        else { return }
+        failuresInARow = 0
+        startTrack(n, crossfade: length)
+    }
+
+    /// The setting changed: applies from the current song on.
+    func crossfadeChanged() {
+        audio?.crossfade = Self.crossfadeSeconds
+        EngineLog.write("Geçiş ayarı: \(Int(Self.crossfadeSeconds)) sn")
+    }
+
+    /// Quitting: the sound fades out first; `done` follows (the app waits for it).
+    func fadeOutForQuit(then done: @escaping () -> Void) {
+        guard isPlaying, let audio else { done(); return }
+        audio.pause(then: done)
     }
 
     // MARK: - Volume leveling
@@ -1361,10 +1415,34 @@ final class YTMusic {
         try await call("ytHome")
     }
 
-    /// Latest uploads of the channels the account follows, newest first.
+    /// Latest uploads of the channels the account follows, newest first. Shared for 5
+    /// minutes by the home page, the new releases page and the bell (one request at a time);
+    /// when YouTube answers with nothing, the last good feed stands in.
     func youtubeSubscriptions() async throws -> YouTubeFeed {
-        try await call("ytSubscriptions")
+        if let kept = subscriptionFeed, Date().timeIntervalSince(kept.at) < 5 * 60 { return kept.feed }
+        if let running = subscriptionTask { return try await running.value }
+        let task = Task { () throws -> YouTubeFeed in try await call("ytSubscriptions") }
+        subscriptionTask = task
+        defer { subscriptionTask = nil }
+        do {
+            let feed = try await task.value
+            if !feed.items.isEmpty {
+                subscriptionFeed = (feed, Date())
+                return feed
+            }
+            EngineLog.write("Abonelik akışı boş geldi (\(feed.summary ?? "?"))"
+                            + (subscriptionFeed != nil ? "; öncekiyle devam" : ""))
+            return subscriptionFeed?.feed ?? feed
+        } catch {
+            EngineLog.write("Abonelik akışı alınamadı: \(error.localizedDescription)"
+                            + (subscriptionFeed != nil ? "; öncekiyle devam" : ""))
+            if let kept = subscriptionFeed { return kept.feed }
+            throw error
+        }
     }
+
+    @ObservationIgnored private var subscriptionFeed: (feed: YouTubeFeed, at: Date)?
+    @ObservationIgnored private var subscriptionTask: Task<YouTubeFeed, Error>?
 
     /// The account's YouTube notifications (the bell) of the last `days` days, newest
     /// first. Read only: nothing is marked as seen or read on YouTube.

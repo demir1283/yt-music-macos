@@ -119,7 +119,7 @@ Akış adresi ──▶ yt-dlp-ejs (YouTube'un akış sınamasını çözer)
 <summary><b>Sorun giderme</b></summary>
 
 - **Sayfalar boş kalıyor:** Görünüm menüsünden **Yeniden bağlan**'ı kullan. YouTube bir onay sayfası gösteriyorsa YouTube Music'i bir kez tarayıcıda aç (⇧⌘Y).
-- **Tanı kaydı:** `defaults write io.github.demir1283.ytmusic diagnosticLog -bool true` uygulamanın yanına `YT Music.log` yazar; `defaults delete io.github.demir1283.ytmusic diagnosticLog` kapatır. Paylaşmadan önce kaydı oku.
+- **Tanı kaydı:** `defaults write io.github.demir1283.ytmusic diagnosticLog -bool true` uygulamanın yanına `YT Music.log` yazar (bir önceki oturumunki `YT Music (önceki).log` olarak saklanır); `defaults delete io.github.demir1283.ytmusic diagnosticLog` kapatır. Paylaşmadan önce kaydı oku.
 - **1.0'dan yükseltme:** bir kez daha giriş yap; ayarlar sıfırdan başlar.
 </details>
 
