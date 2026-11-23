@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 3.0.0" src="https://img.shields.io/badge/version-3.0.0-ff2d55">
+  <img alt="Version 3.1.0" src="https://img.shields.io/badge/version-3.1.0-ff2d55">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-000000?logo=apple">
   <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white">
   <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-3c8dbc">
@@ -39,6 +39,7 @@ On top of what YouTube Music offers, the app has a few things of its own:
 
 ## What's new
 
+- **3.1 — Notifications and crossfade:** a bell at the top right with the new singles, albums and uploads of the artists and channels you follow; crossfade between songs from the player bar; playing and pausing ease in and out; a question before quitting while music plays.
 - **3.0 — Even volume, sleep timer, your listening:** even volume between songs, a sleep timer, a summary of your listening, a redesigned home page and artist pages with the artists' own photos, mixes you can open, and disliked content you can bring back.
 - **2.7 — Updates from inside the app:** a new version shows up in the sidebar; one click pulls and builds it. See [Updating](#updating).
 - **2.6 — English interface:** the whole app follows your Mac's language (English or Turkish), or the one you pick in Settings.

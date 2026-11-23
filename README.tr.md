@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Sürüm 3.0.0" src="https://img.shields.io/badge/s%C3%BCr%C3%BCm-3.0.0-ff2d55">
+  <img alt="Sürüm 3.1.0" src="https://img.shields.io/badge/s%C3%BCr%C3%BCm-3.1.0-ff2d55">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-000000?logo=apple">
   <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white">
   <img alt="MIT Lisansı" src="https://img.shields.io/badge/lisans-MIT-3c8dbc">
@@ -39,6 +39,7 @@ YouTube Music'in sunduklarına ek olarak uygulamanın kendine ait birkaç özell
 
 ## Yenilikler
 
+- **3.1 — Bildirimler ve şarkılar arası geçiş:** sağ üstte, takip ettiğin sanatçı ve kanalların yeni single, albüm ve yüklemelerini gösteren bir zil; çalar çubuğundan şarkılar arası yumuşak geçiş; çalma ve duraklatma yumuşakça açılıp kısılır; müzik çalarken çıkmadan önce sorar.
 - **3.0 — Eşit ses, uyku zamanlayıcı, dinleme özetin:** şarkılar arasında eşit ses, uyku zamanlayıcı, dinleme özetin, sanatçıların kendi fotoğraflarıyla yenilenen ana sayfa ve sanatçı sayfaları, açılabilen mix'ler ve geri alınabilen beğenilmeyen içerik.
 - **2.7 — Uygulama içinden güncelleme:** yeni sürüm kenar çubuğunda görünür; tek tıkla indirilip derlenir. Bkz. [Güncelleme](#güncelleme).
 - **2.6 — İngilizce arayüz:** uygulamanın tamamı Mac'inin diline (Türkçe veya İngilizce) ya da Ayarlar'da seçtiğine uyar.
