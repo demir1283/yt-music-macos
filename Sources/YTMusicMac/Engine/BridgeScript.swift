@@ -790,6 +790,46 @@ enum BridgeScript {
       { 'X-Goog-AuthUser': String(cfg.get('SESSION_INDEX') ?? 0), Origin: location.origin, Referer: location.origin + '/' }, '', location.origin);
   }
 
+  // The page after `token` of a long list (a library grid, a playlist, search results).
+  async function nextPage(token) {
+    let r = await api('browse', { continuation: token });
+    let items = collectItems(r);
+    if (!items.length) {
+      r = await api('browse', {}, ctokenQuery(token));
+      items = collectItems(r);
+    }
+    const next = anyToken(r);
+    return { items, continuation: next === token ? null : next };
+  }
+
+  // An artist's top songs often come without their lengths; the playlist behind the list's
+  // "Tümünü göster" has them. Whatever is still missing stays empty.
+  async function fillLengths(sections) {
+    await Promise.all(sections.map(async (s) => {
+      const missing = s.items.filter((i) => i.videoId && !i.duration);
+      const id = s.more?.browseId;
+      if (!missing.length || !id || !id.startsWith('VL')) return;
+      try {
+        const lengths = new Map();
+        for (const i of collectItems(await api('browse', { browseId: id }))) {
+          if (i.videoId && i.duration) lengths.set(i.videoId, i.duration);
+        }
+        for (const i of missing) i.duration = lengths.get(i.videoId) || i.duration;
+      } catch (e) { /* the list stays as it came */ }
+    }));
+  }
+
+  // The first page of a library list: its items with a page, and the token for the rest.
+  function libraryFirstPage(r) {
+    const items = [];
+    let token = null;
+    for (const s of extractSections(r)) {
+      items.push(...s.items);
+      token = token || s.continuation;
+    }
+    return { items: items.filter((i) => i.browseId), continuation: token || sectionListToken(r) };
+  }
+
   const E = {
     // Regular YouTube's home feed, with its "Müzik" filter when YouTube offers it.
     async ytHome() {
@@ -941,17 +981,13 @@ enum BridgeScript {
 
     async browse({ browseId, params }) {
       const r = await api('browse', params ? { browseId, params } : { browseId });
-      return { header: parseHeader(r), chips: chipsOf(r), sections: extractSections(r), continuation: sectionListToken(r) };
+      const sections = extractSections(r);
+      if (browseId.startsWith('UC')) await fillLengths(sections);
+      return { header: parseHeader(r), chips: chipsOf(r), sections, continuation: sectionListToken(r) };
     },
 
     async more({ token }) {
-      let r = await api('browse', { continuation: token });
-      let items = collectItems(r);
-      if (!items.length) {
-        r = await api('browse', {}, ctokenQuery(token));
-        items = collectItems(r);
-      }
-      return { items, continuation: anyToken(r) };
+      return nextPage(token);
     },
 
     async search({ query, params }) {
@@ -1073,11 +1109,21 @@ enum BridgeScript {
     },
 
     // The artists this account is subscribed to.
+    // Every page of it, not just the first (which ends around "A").
     async subscriptions() {
-      const r = await api('browse', { browseId: 'FEmusic_library_corpus_artists' });
-      const items = [];
-      for (const s of extractSections(r)) items.push(...s.items);
-      return items.filter((i) => i.browseId);
+      const page = libraryFirstPage(await api('browse', { browseId: 'FEmusic_library_corpus_artists' }));
+      const items = page.items;
+      const seen = new Set(items.map((i) => i.browseId));
+      let token = page.continuation;
+      for (let n = 0; token && n < 40; n++) {
+        let more;
+        try { more = await nextPage(token); } catch (e) { break; }
+        for (const i of more.items) {
+          if (i.browseId && !seen.has(i.browseId)) { seen.add(i.browseId); items.push(i); }
+        }
+        token = more.continuation;
+      }
+      return items;
     },
 
     // YouTube Music's charts for the whole world ("ZZ") instead of the account's country.
@@ -1086,19 +1132,16 @@ enum BridgeScript {
       return { header: null, chips: [], sections: extractSections(r), continuation: null };
     },
 
-    async library() {
-      const load = async (id) => {
+    // The first page of one library list ("FEmusic_liked_albums" …), in the given order when
+    // YouTube takes one (`ordered`); the app pages through the rest with `more`.
+    async libraryPage({ browseId, params }) {
+      if (params) {
         try {
-          const r = await api('browse', { browseId: id });
-          const items = [];
-          for (const s of extractSections(r)) items.push(...s.items);
-          return items.filter((i) => i.browseId);
-        } catch (e) { return []; }
-      };
-      const [playlists, albums, artists] = await Promise.all([
-        load('FEmusic_liked_playlists'), load('FEmusic_liked_albums'), load('FEmusic_library_corpus_track_artists'),
-      ]);
-      return { playlists, albums, artists };
+          const page = libraryFirstPage(await api('browse', { browseId, params }));
+          if (page.items.length) return { ...page, ordered: true };
+        } catch (e) { /* not for this list: plain order below */ }
+      }
+      return { ...libraryFirstPage(await api('browse', { browseId })), ordered: false };
     },
 
 
@@ -1317,10 +1360,38 @@ enum BridgeScript {
     },
 
     // Subscribe to / unsubscribe from an artist's channel (YouTube Music's Abone ol button).
+    // From a list (the library, a ••• menu) there are no params, and the list's id may not be
+    // the channel the button acts on: both are taken from the artist's own page, as its
+    // Abone ol button has them.
     async subscribe({ channelId, on, params }) {
-      const body = { channelIds: [channelId] };
-      if (params) body.params = params;
+      let id = channelId, p = params || null;
+      if (!p) {
+        try {
+          const h = parseHeader(await api('browse', { browseId: channelId }));
+          if (h?.channelId) id = h.channelId;
+          p = (on ? h?.subscribeParams : h?.unsubscribeParams) || null;
+        } catch (e) { /* try with the list's id alone */ }
+      }
+      const body = { channelIds: [id] };
+      if (p) body.params = p;
       await api(on ? 'subscription/subscribe' : 'subscription/unsubscribe', body);
+      return true;
+    },
+
+    // Keep an album or someone else's playlist in the library, or take it out. An album is
+    // kept by its own playlist ("OLAK5uy…"), found in its play button or its page.
+    async saveToLibrary({ browseId, playlistId, play, on }) {
+      let id = playlistId || null;
+      if (!id && play) {
+        try { const p = JSON.parse(play); id = p.watchPlaylistEndpoint?.playlistId || p.watchEndpoint?.playlistId || null; } catch (e) { /* no id there */ }
+      }
+      if (!id && browseId && browseId.startsWith('MPRE')) {
+        const r = await api('browse', { browseId });
+        id = findKey(r, 'audioPlaylistId') || findKey(r, 'playlistId');
+      }
+      if (!id && browseId && browseId.startsWith('VL')) id = browseId;
+      if (!id) throw new Error('no playlist for ' + browseId);
+      await api(on ? 'like/like' : 'like/removelike', { target: { playlistId: plId(id) } });
       return true;
     },
 

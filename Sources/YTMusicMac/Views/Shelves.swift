@@ -454,15 +454,16 @@ private struct TrackListRows: View {
 
     var body: some View {
         let albumColumn = showAlbum && width > 700
+        let time = TimeColumn(items)
         VStack(spacing: 0) {
             if showHeader {
                 TrackListHeader(numbered: numbered, showArtwork: showArtwork, showAlbum: albumColumn,
-                                secondTitle: Self.secondColumnTitle(items))
+                                secondTitle: Self.secondColumnTitle(items), time: time)
             }
             LazyVStack(spacing: 0) {
                 ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
                     TrackRow(item: item, index: numbered ? i + 1 : nil, showArtwork: showArtwork,
-                             showAlbum: albumColumn, striped: i % 2 == 0, context: context)
+                             showAlbum: albumColumn, showTime: time != .hidden, striped: i % 2 == 0, context: context)
                         .onAppear { if i >= items.count - 4 { onReachEnd?() } }
                 }
             }
@@ -483,12 +484,25 @@ private struct TrackListRows: View {
     }
 }
 
+/// What a list's last column holds: the songs' lengths, the releases' years (an artist's
+/// albums and singles), or nothing when no row has either (the column then goes).
+enum TimeColumn {
+    case duration, year, hidden
+
+    init(_ items: [MediaItem]) {
+        if items.contains(where: { $0.duration?.isEmpty == false }) { self = .duration }
+        else if items.contains(where: { $0.releaseYear != nil }) { self = .year }
+        else { self = .hidden }
+    }
+}
+
 /// Column titles; mirrors TrackRow's layout exactly so the columns line up.
 struct TrackListHeader: View {
     let numbered: Bool
     let showArtwork: Bool
     let showAlbum: Bool
     var secondTitle = M.t("Sanatçı", "Artist")
+    var time = TimeColumn.duration
     @Environment(\.density) private var d
 
     var body: some View {
@@ -506,8 +520,16 @@ struct TrackListHeader: View {
                 if showAlbum {
                     Text(M.t("Albüm", "Album")).frame(maxWidth: .infinity, alignment: .leading)
                 }
-                Image(systemName: "clock")
-                    .frame(width: 48, alignment: .trailing)
+                switch time {
+                case .duration:
+                    Image(systemName: "clock")
+                        .frame(width: 48, alignment: .trailing)
+                case .year:
+                    Text(M.t("Yıl", "Year"))
+                        .frame(width: 48, alignment: .trailing)
+                case .hidden:
+                    EmptyView()
+                }
                 Color.clear.frame(width: 22, height: 1)
             }
             .font(.system(size: 11.5, weight: .medium))
@@ -525,6 +547,8 @@ struct TrackRow: View {
     var index: Int?
     var showArtwork = true
     var showAlbum = true
+    /// The last column: the length, or the year of a release without one.
+    var showTime = true
     var striped = false
     var context: String?
 
@@ -601,10 +625,12 @@ struct TrackRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            Text(item.duration ?? "")
-                .font(.system(size: 12).monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: 48, alignment: .trailing)
+            if showTime {
+                Text(item.duration ?? item.releaseYear ?? "")
+                    .font(.system(size: 12).monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 48, alignment: .trailing)
+            }
 
             Menu {
                 ItemMenu(item: item)

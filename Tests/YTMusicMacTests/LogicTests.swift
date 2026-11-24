@@ -255,3 +255,42 @@ final class ReleaseAssetTests: XCTestCase {
         XCTAssertNil(Updater.dmgAsset(in: [:]))
     }
 }
+
+final class LibraryTests: XCTestCase {
+    private func item(_ title: String, kind: String = "album", subtitle: String = "",
+                      videoId: String? = nil, duration: String? = nil) -> MediaItem {
+        MediaItem(uid: title, kind: kind, title: title, subtitle: subtitle, thumbnail: nil, videoId: videoId,
+                  browseId: videoId == nil ? "MPRE\(title)" : nil, params: nil, playlistId: nil, artists: [],
+                  album: nil, duration: duration, explicit: false, play: nil, wide: false, color: nil)
+    }
+
+    func testSortingKeepsYouTubesOrderForRecentlyAdded() {
+        let items = [item("Ömür"), item("ahmet"), item("Zeki"), item("Çiçek")]
+        XCTAssertEqual(LibrarySort.recent.apply(items).map(\.title), ["Ömür", "ahmet", "Zeki", "Çiçek"])
+    }
+
+    func testAToZIgnoresCaseAndReadsNumbersAsNumbers() {
+        let items = [item("b"), item("Track 10"), item("A"), item("Track 2")]
+        XCTAssertEqual(LibrarySort.az.apply(items).map(\.title), ["A", "b", "Track 2", "Track 10"])
+        XCTAssertEqual(LibrarySort.za.apply(items).map(\.title), ["Track 10", "Track 2", "b", "A"])
+    }
+
+    func testAReleaseShowsItsYear() {
+        XCTAssertEqual(item("x", subtitle: "Single • 2024").releaseYear, "2024")
+        XCTAssertEqual(item("x", subtitle: "Albüm • Tarkan • 1997").releaseYear, "1997")
+        XCTAssertNil(item("x", subtitle: "EP").releaseYear)
+    }
+
+    func testASongNeverShowsAnAlbumNamedLikeAYear() {
+        XCTAssertNil(item("Style", kind: "song", subtitle: "Taylor Swift • 1989", videoId: "v1").releaseYear)
+    }
+
+    func testTheLastColumnFollowsWhatTheRowsHave() {
+        let song = item("s", kind: "song", videoId: "v1", duration: "3:12")
+        let bare = item("t", kind: "song", videoId: "v2")
+        let single = item("u", subtitle: "Single • 2023")
+        XCTAssertEqual(TimeColumn([song, bare]), .duration)
+        XCTAssertEqual(TimeColumn([bare, single]), .year)
+        XCTAssertEqual(TimeColumn([bare]), .hidden)
+    }
+}

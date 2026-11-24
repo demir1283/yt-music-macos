@@ -40,6 +40,14 @@ struct MediaItem: Codable, Identifiable, Hashable {
 
     var id: String { uid }
     var isTrack: Bool { videoId != nil }
+    /// The year in an album's or single's subtitle ("Single • 2024"); nil for songs, whose
+    /// subtitle may hold an album named like a year ("1989").
+    var releaseYear: String? {
+        guard !isTrack else { return nil }
+        return subtitle.components(separatedBy: " • ").last { part in
+            part.count == 4 && Int(part).map { (1900...2100).contains($0) } == true
+        }
+    }
     /// The item with the artist's name in front of its subtitle ("Tiësto • Single • 2025"),
     /// for a release taken from the artist's own page, where the name isn't written.
     /// `id`: the artist's page, so the name links to it.
@@ -228,6 +236,31 @@ struct LibraryData: Codable {
 
     static let empty = LibraryData(playlists: [], albums: [], artists: [])
     var isEmpty: Bool { playlists.isEmpty && albums.isEmpty && artists.isEmpty }
+
+    subscript(list: LibraryFilter) -> [MediaItem] {
+        get {
+            switch list {
+            case .playlists: return playlists
+            case .albums: return albums
+            case .artists: return artists
+            }
+        }
+        set {
+            switch list {
+            case .playlists: playlists = newValue
+            case .albums: albums = newValue
+            case .artists: artists = newValue
+            }
+        }
+    }
+}
+
+/// The first page of one library list.
+struct LibraryPage: Codable {
+    let items: [MediaItem]
+    let continuation: String?
+    /// YouTube took the order asked for.
+    let ordered: Bool
 }
 
 struct LyricsData: Codable {

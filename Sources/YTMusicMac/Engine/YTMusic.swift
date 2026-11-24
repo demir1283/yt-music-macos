@@ -124,6 +124,15 @@ final class YTMusic {
     // Library
     private(set) var library = LibraryData.empty
     private(set) var libraryLoading = false
+    /// Lists whose later pages are still coming in.
+    private(set) var libraryPaging: Set<LibraryFilter> = []
+    /// The order each list is shown in (saved per list).
+    private(set) var librarySorts: [LibraryFilter: LibrarySort] =
+        Dictionary(uniqueKeysWithValues: LibraryFilter.allCases.map { ($0, LibrarySort.saved($0)) })
+    /// Lists read to the end, in their current order.
+    @ObservationIgnored private var libraryComplete: Set<LibraryFilter> = []
+    @ObservationIgnored private var libraryRuns: [LibraryFilter: UUID] = [:]
+    @ObservationIgnored private var libraryPageTasks: [LibraryFilter: Task<Void, Never>] = [:]
 
     @ObservationIgnored private var playGuard = Date.distantPast
     @ObservationIgnored private var seekGuard = Date.distantPast
@@ -680,6 +689,8 @@ final class YTMusic {
             positionDate = now
         }
         if now > playGuard, isPlaying != playing {
+            // Diagnostic log: the player changed the state on its own (not a click).
+            EngineLog.write("Durum: oynatıcı \(playing ? "çalıyor" : "durdu")\(buffering ? " (ara belleğe alıyor)" : "")")
             isPlaying = playing
             changed = true
         }
@@ -765,6 +776,7 @@ final class YTMusic {
         guard track != nil, !resolving else { return }
         // Restored at launch and not loaded yet: start it where it was left.
         if let at = resumeAt, audio?.hasItem != true {
+            EngineLog.write("Kullanıcı: çal (kaldığı yerden, \(Int(at)). sn)")
             failuresInARow = 0
             startTrack(queueIndex, startAt: at)
             return
@@ -773,6 +785,7 @@ final class YTMusic {
         position = audio.currentTime
         positionDate = Date()
         isPlaying.toggle()
+        EngineLog.write("Kullanıcı: \(isPlaying ? "çal" : "duraklat")")
         playGuard = Date().addingTimeInterval(0.5)
         if isPlaying { audio.play() } else { audio.pause() }
         pushNowPlaying()
@@ -1233,7 +1246,72 @@ final class YTMusic {
         // The home page (favourite artists, stations, new releases) and the artist's page.
         PageCache.shared.markStale { $0.hasPrefix("home|") }
         PageCache.shared.forget { $0.hasPrefix("page|\(channelId)|") }
-        Task { await loadLibrary() }
+        // Unsubscribed: the artist just leaves the list. Reading the list again right after
+        // can come back empty while YouTube catches up, so only a new artist is read for.
+        if on {
+            Task { await loadLibraryList(.artists) }
+        } else {
+            library.artists.removeAll { $0.browseId == channelId }
+        }
+    }
+
+    // MARK: - Keeping things in the library
+
+    /// The library list an item belongs in: albums, playlists, followed artists.
+    private func libraryList(for item: MediaItem) -> LibraryFilter? {
+        switch item.kind {
+        case "album": return .albums
+        case "playlist": return .playlists
+        case "artist": return .artists
+        default: return nil
+        }
+    }
+
+    func inLibrary(_ item: MediaItem) -> Bool {
+        guard let list = libraryList(for: item), let id = item.browseId else { return false }
+        return library[list].contains { $0.browseId == id }
+    }
+
+    /// Whether the menu can add the item to the library or take it out: albums, followed
+    /// artists, and playlists made by others. The account's own playlists are deleted on
+    /// their page instead; Beğenilen müzikler and the like stay.
+    func canKeepInLibrary(_ item: MediaItem) -> Bool {
+        guard loggedIn, let list = libraryList(for: item), let id = item.browseId else { return false }
+        switch list {
+        case .albums: return id.hasPrefix("MPRE")
+        case .artists: return id.hasPrefix("UC")
+        case .playlists:
+            let pid = id.hasPrefix("VL") ? String(id.dropFirst(2)) : id
+            guard !pid.isEmpty, pid != "LM", pid != "SE", !pid.hasPrefix("RD") else { return false }
+            // In the library: only when it is known not to be the account's own.
+            guard inLibrary(item) else { return true }
+            return playlistIndex[pid].map { !$0.editable } ?? false
+        }
+    }
+
+    /// Adds the item to the library or takes it out (an artist: subscribe / unsubscribe).
+    /// Taken out, it leaves the list at once; on failure it comes back.
+    func setInLibrary(_ item: MediaItem, _ on: Bool) async {
+        guard let list = libraryList(for: item), let id = item.browseId else { return }
+        let place = library[list].firstIndex { $0.browseId == id }
+        if !on { library[list].removeAll { $0.browseId == id } }
+        do {
+            if list == .artists {
+                try await setSubscribed(on, channelId: id, params: nil)
+                return
+            }
+            _ = try await call("saveToLibrary", ["browseId": id, "playlistId": item.playlistId ?? "",
+                                                 "play": item.play ?? "", "on": on], as: Ignored.self)
+            EngineLog.write(on ? "Kitaplığa eklendi: \(item.title)" : "Kitaplıktan kaldırıldı: \(item.title)")
+            PageCache.shared.markStale { $0.hasPrefix("page|\(id)|") || $0.hasPrefix("home|") }
+            if on { Task { await loadLibraryList(list) } }
+        } catch {
+            // Back where it was, if it went.
+            if !on, let place, !library[list].contains(where: { $0.browseId == id }) {
+                library[list].insert(item, at: min(place, library[list].count))
+            }
+            EngineLog.write("Kitaplık değişmedi (\(item.title)): \(error.localizedDescription)")
+        }
     }
 
     func removeFromPlaylist(_ playlistId: String, videoId: String, setVideoId: String) async throws {
@@ -1370,6 +1448,7 @@ final class YTMusic {
         playlistRevision += 1
         Task {
             await loadLibrary()
+            await libraryPagesDone()
             if reindex { await rebuildPlaylistIndex() }
         }
     }
@@ -1562,13 +1641,89 @@ final class YTMusic {
         try await call("lyrics", ["videoId": videoId])
     }
 
+    /// Every library list: waits for the first pages; the rest come in behind them.
     func loadLibrary() async {
         guard loggedIn else { return }
         libraryLoading = true
         defer { libraryLoading = false }
-        if let lib = try? await call("library", as: LibraryData.self) {
-            library = lib
+        await withTaskGroup(of: Void.self) { group in
+            for list in LibraryFilter.allCases {
+                group.addTask { await self.loadLibraryList(list) }
+            }
         }
+    }
+
+    /// Waits until every library list has been read to the end (or given up on).
+    func libraryPagesDone() async {
+        for task in libraryPageTasks.values { await task.value }
+    }
+
+    /// Shows `list` in `sort`. A–Z and Z–A of a list read to the end need no new request.
+    func sortLibrary(_ list: LibraryFilter, _ sort: LibrarySort) {
+        guard librarySorts[list] != sort else { return }
+        librarySorts[list] = sort
+        sort.save(for: list)
+        if sort != .recent, libraryComplete.contains(list) {
+            library[list] = sort.apply(library[list])
+            return
+        }
+        Task { await loadLibraryList(list) }
+    }
+
+    /// The first page of `list` in its order, then the rest page by page in the background.
+    /// A newer load of the same list makes an older one stop.
+    private func loadLibraryList(_ list: LibraryFilter) async {
+        let run = UUID()
+        libraryRuns[list] = run
+        libraryPageTasks[list]?.cancel()
+        libraryComplete.remove(list)
+        libraryPaging.remove(list)
+        let sort = librarySorts[list] ?? .recent
+        guard let first = try? await call("libraryPage", ["browseId": list.browseId, "params": sort.params],
+                                          as: LibraryPage.self),
+              libraryRuns[list] == run else { return }
+        var seen = Set<String>()
+        let items = first.items.filter { seen.insert($0.browseId ?? $0.uid).inserted }
+        // An empty answer for a list that had things is YouTube's hiccup, not an empty library:
+        // what is shown stays.
+        if items.isEmpty, !library[list].isEmpty {
+            EngineLog.write("Kitaplık: \(list.rawValue) boş geldi; eldeki \(library[list].count) öğe kaldı")
+            return
+        }
+        library[list] = sort.apply(items)
+        guard let token = first.continuation else {
+            libraryComplete.insert(list)
+            EngineLog.write("Kitaplık: \(list.rawValue) \(items.count) öğe")
+            return
+        }
+        libraryPaging.insert(list)
+        libraryPageTasks[list] = Task { [weak self] in
+            await self?.pageLibrary(list, run: run, sort: sort, items: items, seen: seen,
+                                    token: token, ordered: first.ordered)
+        }
+    }
+
+    /// The rest of `list` after its first page, at most 40 pages.
+    private func pageLibrary(_ list: LibraryFilter, run: UUID, sort: LibrarySort, items start: [MediaItem],
+                             seen known: Set<String>, token first: String, ordered: Bool) async {
+        var items = start, seen = known, token = first, pages = 1
+        defer { if libraryRuns[list] == run { libraryPaging.remove(list) } }
+        while pages < 40, !Task.isCancelled {
+            guard let more = try? await call("more", ["token": token], as: MoreResult.self),
+                  libraryRuns[list] == run else { return }
+            let fresh = more.items.filter { $0.browseId != nil && seen.insert($0.browseId ?? $0.uid).inserted }
+            pages += 1
+            if !fresh.isEmpty {
+                items += fresh
+                library[list] = sort.apply(items)
+            }
+            guard let next = more.continuation, next != token, !fresh.isEmpty else { break }
+            token = next
+        }
+        guard libraryRuns[list] == run else { return }
+        libraryComplete.insert(list)
+        EngineLog.write("Kitaplık: \(list.rawValue) \(items.count) öğe, \(pages) sayfa"
+                        + (ordered ? "" : " (YouTube sırayı almadı)"))
     }
 
     // MARK: - Account

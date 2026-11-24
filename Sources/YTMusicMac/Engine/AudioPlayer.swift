@@ -32,6 +32,10 @@ final class AudioPlayer {
     private var finished = false
     /// Seek-then-play to perform once the new item is ready (resuming a saved position).
     private var pendingStart: (seek: Double, play: Bool)?
+    /// Such a start is under way: the player is still paused while it loads and moves to
+    /// the saved position, but to the listener it is loading, not stopped (otherwise the
+    /// play button came back after the first click at launch and seemed to need a second).
+    private var starting = false
     /// Diagnostic log only: when the current item was given to the player (cleared once it
     /// plays), and the last waiting reason written.
     private var loadedAt: Date?
@@ -449,6 +453,7 @@ final class AudioPlayer {
         // short: it fades out, and this one comes in.
         let natural = finished
         cancelEase()
+        starting = false
         // The new song's leveling applies once the old one has its own player (it fades
         // out at its own level).
         let previousGain = self.gain
@@ -487,6 +492,7 @@ final class AudioPlayer {
         observe(item)
         if startAt > 1 {
             pendingStart = (startAt, autoplay)
+            starting = autoplay
         } else {
             pendingStart = nil
             if autoplay { player.play() }
@@ -549,14 +555,17 @@ final class AudioPlayer {
             EngineLog.write(String(format: "Oynatıcı: öğe hazır (+%.1f sn)", Date().timeIntervalSince(t)))
         }
         if status == .failed {
+            starting = false
             failed(id, message)
         } else if status == .readyToPlay, let p = pendingStart {
             pendingStart = nil
             player.seek(to: CMTime(seconds: p.seek, preferredTimescale: 600),
-                        toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+                        toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+                EngineLog.write("Oynatıcı: \(Int(p.seek)). sn'ye gidildi\(finished ? "" : " (yarıda kaldı)")\(p.play ? ", çalınıyor" : "")")
                 guard p.play else { return }
                 Task { @MainActor [weak self] in
                     guard let self, self.currentID == id else { return }
+                    self.starting = false
                     self.player.play()
                 }
             }
@@ -580,6 +589,7 @@ final class AudioPlayer {
     func pause(then done: (() -> Void)? = nil) {
         endCrossfade()
         easeInOnStart = false
+        starting = false
         let p = player
         // Already silent (paused, or the sleep timer's fade has just ended): at once.
         guard p.timeControlStatus != .paused, ease > 0.001, fade > 0.001 else {
@@ -605,6 +615,7 @@ final class AudioPlayer {
         endCrossfade()
         cancelEase()
         easeInOnStart = false
+        starting = false
         discardNext()
         clearItemObservers()
         currentID = nil
@@ -656,7 +667,9 @@ final class AudioPlayer {
             easeInOnStart = false
             easeVolume(to: 1)
         }
-        onState?(status != .paused, status == .waitingToPlayAtSpecifiedRate)
+        // Still paused because a start is on its way: loading, not stopped.
+        let loading = starting && status == .paused
+        onState?(status != .paused || loading, status == .waitingToPlayAtSpecifiedRate || loading)
     }
 
     /// Seconds loaded ahead of the play position (diagnostic log).

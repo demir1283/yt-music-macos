@@ -445,7 +445,21 @@ struct ItemMenu: View {
             }
         } else if !item.isTrack, item.kind != "category" {
             Divider()
-            Button(M.t("Bana önerme", "Don't recommend")) { app.hide(item) }
+            let kept = app.engine.inLibrary(item)
+            if app.engine.canKeepInLibrary(item) {
+                if kept {
+                    Button(item.isArtist ? M.t("Abonelikten Çık", "Unsubscribe") : M.t("Kitaplıktan Kaldır", "Remove from Library")) {
+                        Task { await app.engine.setInLibrary(item, false) }
+                    }
+                } else {
+                    Button(item.isArtist ? M.t("Abone Ol", "Subscribe") : M.t("Kitaplığa Ekle", "Add to Library")) {
+                        Task { await app.engine.setInLibrary(item, true) }
+                    }
+                }
+            }
+            if !kept {
+                Button(M.t("Bana önerme", "Don't recommend")) { app.hide(item) }
+            }
         }
         if !item.artists.isEmpty {
             Divider()

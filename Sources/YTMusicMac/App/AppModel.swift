@@ -98,6 +98,65 @@ enum LibraryFilter: String, CaseIterable, Identifiable {
         case .artists: return M.t("Sanatçılar", "Artists")
         }
     }
+    /// The YouTube Music page the list comes from.
+    var browseId: String {
+        switch self {
+        case .playlists: return "FEmusic_liked_playlists"
+        case .albums: return "FEmusic_liked_albums"
+        // The artists followed, not everyone with a song in the library.
+        case .artists: return "FEmusic_library_corpus_artists"
+        }
+    }
+}
+
+/// The order of a library list. Kept per list.
+enum LibrarySort: String, CaseIterable, Identifiable {
+    case recent, az, za
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .recent: return M.t("Son eklenen", "Recently added")
+        case .az: return M.t("A–Z", "A–Z")
+        case .za: return M.t("Z–A", "Z–A")
+        }
+    }
+    /// The order YouTube Music's own library menu asks for. YouTube may not take it on
+    /// every list; the app sorts A–Z / Z–A itself either way.
+    var params: String {
+        switch self {
+        case .recent: return "ggMGKgQIABAB"
+        case .az: return "ggMGKgQIARAA"
+        case .za: return "ggMGKgQIARAB"
+        }
+    }
+
+    /// `items` in this order. "Son eklenen" keeps YouTube's order.
+    func apply(_ items: [MediaItem]) -> [MediaItem] {
+        switch self {
+        case .recent: return items
+        case .az: return items.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        case .za: return items.sorted { $0.title.localizedStandardCompare($1.title) == .orderedDescending }
+        }
+    }
+
+    static func saved(_ list: LibraryFilter) -> LibrarySort {
+        UserDefaults.standard.string(forKey: "librarySort.\(list.rawValue)").flatMap(LibrarySort.init) ?? .recent
+    }
+    func save(for list: LibraryFilter) {
+        UserDefaults.standard.set(rawValue, forKey: "librarySort.\(list.rawValue)")
+    }
+}
+
+/// Square tiles or rows. Kept per list.
+enum LibraryLayout: String {
+    case grid, list
+
+    static func saved(_ list: LibraryFilter) -> LibraryLayout {
+        UserDefaults.standard.string(forKey: "libraryLayout.\(list.rawValue)").flatMap(LibraryLayout.init) ?? .grid
+    }
+    func save(for list: LibraryFilter) {
+        UserDefaults.standard.set(rawValue, forKey: "libraryLayout.\(list.rawValue)")
+    }
 }
 
 /// UI-level state: sidebar selection, navigation stack, side panels, search text.
