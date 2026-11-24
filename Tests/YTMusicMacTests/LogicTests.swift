@@ -219,3 +219,23 @@ final class CrossfadeTests: XCTestCase {
         XCTAssertEqual(AudioPlayer.crossfadeCurve(1).outgoing, 0, accuracy: 0.0001)
     }
 }
+
+/// Which build of YouTube's player script the stream solver reads.
+final class PlayerVariantTests: XCTestCase {
+    func testTheTVBuildIsTriedFirst() {
+        XCTAssertEqual(SigSolver.variants.first, "tv")
+        XCTAssertEqual(SigSolver.variants, ["tv", "main"])
+    }
+
+    func testVariantAddresses() {
+        XCTAssertEqual(SigSolver.variantURL(id: "b485e332", variant: "tv")?.absoluteString,
+                       "https://www.youtube.com/s/player/b485e332/tv-player-ias.vflset/tv-player-ias.js")
+        XCTAssertEqual(SigSolver.variantURL(id: "b485e332", variant: "main")?.absoluteString,
+                       "https://www.youtube.com/s/player/b485e332/player_ias.vflset/en_US/base.js")
+    }
+
+    func testAnyPlayerAddressGivesItsVersion() {
+        let url = SigSolver.canonicalPlayerURL("/s/player/b485e332/player_ias.vflset/tr_TR/base.js")
+        XCTAssertEqual(url.map { SigSolver.playerID($0) }, "b485e332")
+    }
+}

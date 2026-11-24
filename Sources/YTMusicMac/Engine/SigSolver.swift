@@ -26,7 +26,20 @@ actor SigSolver {
     static func canonicalPlayerURL(_ raw: String) -> URL? {
         guard let r = raw.range(of: #"/s/player/([0-9a-fA-F]{8,})/"#, options: .regularExpression) else { return nil }
         let id = raw[r].split(separator: "/")[2]
-        return URL(string: "https://www.youtube.com/s/player/\(id)/player_ias.vflset/en_US/base.js")
+        return variantURL(id: String(id), variant: "main")
+    }
+
+    /// The builds of one player version YouTube serves; their "n" and signature
+    /// functions are the same. Tried in this order: since players 05a4ffc0 / b485e332
+    /// (November 2026) the solver can't prepare the main build (yt-dlp-ejs drops the
+    /// player's class-inheritance calls, and a class is then built without its base:
+    /// "a.addOnDisposeCallback is not a function"); the TV build still prepares. yt-dlp
+    /// made the same switch (yt-dlp#18124, ejs#79).
+    static let variants = ["tv", "main"]
+
+    static func variantURL(id: String, variant: String) -> URL? {
+        let path = variant == "tv" ? "tv-player-ias.vflset/tv-player-ias.js" : "player_ias.vflset/en_US/base.js"
+        return URL(string: "https://www.youtube.com/s/player/\(id)/\(path)")
     }
 
     static func playerID(_ url: URL) -> String {
@@ -36,23 +49,46 @@ actor SigSolver {
     }
 
     /// Makes sure the solver for this player version is ready. Returns its signature timestamp.
+    /// Each build of the player (TV first, then main) is tried until one prepares.
     @discardableResult
     func prepare(playerURL: URL) async throws -> Int? {
         let id = Self.playerID(playerURL)
         if loadedPlayer == id, ctx != nil { return sts }
+        var failure: Error?
+        for variant in Self.variants {
+            guard let url = Self.variantURL(id: id, variant: variant) else { continue }
+            do {
+                let (f, foundSts) = try await load(id: id, variant: variant, url: url)
+                ctx = f
+                loadedPlayer = id
+                sts = foundSts
+                return foundSts
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                EngineLog.write("Çözücü (\(variant)) hazırlanamadı: \(error.localizedDescription)")
+                failure = error
+            }
+        }
+        throw failure ?? StreamError.unplayable(M.t("Çözücü hazırlanamadı", "The solver couldn't be prepared"))
+    }
 
-        let preFile = Self.solverDir.appendingPathComponent("ejs-\(EJSScripts.version)-\(id).js")
-        let stsFile = Self.solverDir.appendingPathComponent("ejs-\(EJSScripts.version)-\(id).sts")
+    /// One build of the player: from disk when it was prepared before, otherwise
+    /// downloaded and pre-processed. Returns a small context holding only the two
+    /// solver functions, and the signature timestamp.
+    private func load(id: String, variant: String, url playerURL: URL) async throws -> (JSContext, Int?) {
+        let preFile = Self.solverDir.appendingPathComponent("ejs-\(EJSScripts.version)-\(id)-\(variant).js")
+        let stsFile = Self.solverDir.appendingPathComponent("ejs-\(EJSScripts.version)-\(id)-\(variant).sts")
         var pre = try? String(contentsOf: preFile, encoding: .utf8)
         var foundSts = (try? String(contentsOf: stsFile, encoding: .utf8)).flatMap { Int($0) }
-        if pre != nil { EngineLog.write("Çözücü diskten yüklendi (\(id))") }
+        if pre != nil { EngineLog.write("Çözücü diskten yüklendi (\(id), \(variant))") }
 
         let c = JSContext()!
         var jsError: String?
         c.exceptionHandler = { _, e in jsError = e?.toString() }
 
         if pre == nil {
-            EngineLog.write("Çözücü: oynatıcı betiği indiriliyor (\(id))")
+            EngineLog.write("Çözücü: oynatıcı betiği indiriliyor (\(id), \(variant))")
             let fetchStarted = Date()
             var req = URLRequest(url: playerURL)
             req.setValue(YTAuth.userAgent, forHTTPHeaderField: "User-Agent")
@@ -83,7 +119,7 @@ actor SigSolver {
             }
             pre = s
             Self.saveSolver(s, sts: foundSts, pre: preFile, stsFile: stsFile)
-            EngineLog.write(String(format: "Çözücü hazır (indirme %.1f sn, hazırlama %.1f sn)",
+            EngineLog.write(String(format: "Çözücü hazır (%@, indirme %.1f sn, hazırlama %.1f sn)", variant,
                                    started.timeIntervalSince(fetchStarted), Date().timeIntervalSince(started)))
         }
 
@@ -104,10 +140,7 @@ actor SigSolver {
             try? FileManager.default.removeItem(at: preFile)
             throw StreamError.unplayable(M.t("Çözücü fonksiyonları bulunamadı: \(fError ?? "")", "Solver functions not found: \(fError ?? "")"))
         }
-        ctx = f
-        loadedPlayer = id
-        sts = foundSts
-        return foundSts
+        return (f, foundSts)
     }
 
     func solve(n: String?, sig: String?) throws -> (n: String?, sig: String?) {

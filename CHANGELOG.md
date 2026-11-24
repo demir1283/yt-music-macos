@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 3.1.1 — 2026-11-24
 
+A fix for YouTube's new player script, which kept songs from playing.
+
+- **Songs play again with YouTube's new player.** Since November 23 YouTube has been rolling out new versions of its player script (05a4ffc0, b485e332, …) that the stream solver couldn't prepare ("a.addOnDisposeCallback is not a function"), so nothing played — or only now and then, while the rollout was partial. The app now reads the TV build of the same player version, which prepares as before, and falls back to the main build; yt-dlp made the same change (yt-dlp#18124).
 - For contributors: a commit is built on GitHub once. When main is fast-forwarded to a commit that already passed on next (as a release does), a small Linux job finds that result — waiting for it if next is still building — and the Mac build is skipped.
 
 ## 3.1.0 — 2026-11-23
