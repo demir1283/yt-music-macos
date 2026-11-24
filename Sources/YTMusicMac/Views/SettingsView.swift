@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Settings: four groups (Appearance, Listening, Privacy, General) in the style of the
 /// system's own settings — a title and a short explanation on the left of each row, its
@@ -15,6 +16,15 @@ struct SettingsView: View {
     @ViewState var language = M.chosen ?? "system"
     @ViewState var confirmErase = false
     @ViewState var showDisliked = false
+    /// The groups' own height, measured; the sheet is never taller than the window.
+    @ViewState var contentHeight: CGFloat = 10_000
+
+    /// What the groups may take: the main window's height less the sheet's title row and
+    /// margins.
+    private var maxGroupsHeight: CGFloat {
+        let window = AppDelegate.shared?.mainWindowHeight ?? (NSScreen.main?.visibleFrame.height ?? 800)
+        return max(280, window - 150)
+    }
 
     var body: some View {
         @Bindable var theme = theme
@@ -28,131 +38,143 @@ struct SettingsView: View {
             // Esc closes the sheet too.
             .background(Button("") { dismiss() }.keyboardShortcut(.cancelAction).opacity(0).allowsHitTesting(false))
 
-            SettingsGroup(M.t("Görünüm", "Appearance")) {
-                SettingsRow(M.t("Tema", "Theme")) {
-                    Picker("", selection: $theme.appearance) {
-                        ForEach(AppearanceMode.allCases) { Text($0.title).tag($0) }
-                    }
-                    .segmented()
-                }
-                RowDivider()
-                SettingsRow(M.t("Vurgu rengi", "Accent colour"), detail: theme.accent.name) {
-                    HStack(spacing: 4) {
-                        ForEach(ThemeStore.accents) { choice in
-                            AccentDot(choice: choice, selected: theme.accentID == choice.id) {
-                                withAnimation(.easeInOut(duration: 0.2)) { theme.accentID = choice.id }
+            // The groups scroll when they are taller than the window allows (a laptop
+            // screen, full screen); otherwise the sheet is as tall as they are.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    SettingsGroup(M.t("Görünüm", "Appearance")) {
+                        SettingsRow(M.t("Tema", "Theme")) {
+                            Picker("", selection: $theme.appearance) {
+                                ForEach(AppearanceMode.allCases) { Text($0.title).tag($0) }
+                            }
+                            .segmented()
+                        }
+                        RowDivider()
+                        SettingsRow(M.t("Vurgu rengi", "Accent colour"), detail: theme.accent.name) {
+                            HStack(spacing: 4) {
+                                ForEach(ThemeStore.accents) { choice in
+                                    AccentDot(choice: choice, selected: theme.accentID == choice.id) {
+                                        withAnimation(.easeInOut(duration: 0.2)) { theme.accentID = choice.id }
+                                    }
+                                }
                             }
                         }
+                        RowDivider()
+                        SettingsRow(M.t("Arka plan", "Background")) {
+                            Picker("", selection: $theme.background) {
+                                ForEach(BackgroundStyle.allCases) { Text($0.title).tag($0) }
+                            }
+                            .segmented()
+                        }
+                        if theme.background.isAnimated {
+                            RowDivider().transition(.softReveal)
+                            SettingsRow(M.t("Desen yoğunluğu", "Pattern intensity")) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "sun.min").foregroundStyle(.secondary)
+                                    Slider(value: $theme.ambientIntensity, in: 0.2...1)
+                                        .controlSize(.small)
+                                        .frame(width: 170)
+                                    Image(systemName: "sun.max.fill").foregroundStyle(.secondary)
+                                }
+                            }
+                            .transition(.softReveal)
+                        }
                     }
-                }
-                RowDivider()
-                SettingsRow(M.t("Arka plan", "Background")) {
-                    Picker("", selection: $theme.background) {
-                        ForEach(BackgroundStyle.allCases) { Text($0.title).tag($0) }
+
+                    SettingsGroup(M.t("Dinleme", "Listening")) {
+                        SettingsRow(M.t("Ses seviyesini eşitle", "Level the volume"),
+                                    detail: M.t("Şarkılar aynı seviyeye getirilir; aralarında ses sıçramaz. Uygulamanın genel sesi biraz kısılır.",
+                                                "Songs are brought to the same level, so the volume doesn't jump between them. The app as a whole gets a little quieter.")) {
+                            Toggle("", isOn: $leveling).switchStyle()
+                                .onChange(of: leveling) { _, _ in app.engine.levelingChanged() }
+                        }
+                        RowDivider()
+                        SettingsRow(M.t("Radyoyu düzenle", "Tidy up radios"),
+                                    detail: M.t("Resmî sürümler önce, her şarkı bir kez. Uzun setler ve seçtiğin listeler olduğu gibi kalır.",
+                                                "Official versions first, each song once. Long sets and the lists you pick stay as they are.")) {
+                            Toggle("", isOn: $curateRadio).switchStyle()
+                        }
+                        RowDivider()
+                        SettingsRow(M.t("Ses kalitesi", "Audio quality")) {
+                            Text(app.engine.streamInfo.isEmpty ? M.t("Henüz bir şey çalınmadı", "Nothing played yet") : app.engine.streamInfo)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                     }
-                    .segmented()
-                }
-                if theme.background.isAnimated {
-                    RowDivider().transition(.softReveal)
-                    SettingsRow(M.t("Desen yoğunluğu", "Pattern intensity")) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "sun.min").foregroundStyle(.secondary)
-                            Slider(value: $theme.ambientIntensity, in: 0.2...1)
+
+                    SettingsGroup(M.t("Gizlilik", "Privacy")) {
+                        SettingsRow(M.t("Dinleme geçmişi", "Listening history"),
+                                    detail: M.t("Öneriler bundan öğrenir; Mac'ten çıkmaz.", "Recommendations learn from it; it never leaves your Mac.")
+                                        + " " + historySize) {
+                            Toggle("", isOn: $keepHistory).switchStyle()
+                        }
+                        RowDivider()
+                        SettingsRow(M.t("Beğenilmeyen içerik", "Disliked content"),
+                                    detail: app.hiddenKeys.isEmpty
+                                        ? M.t("Beğenmediğin ya da önerilmesini istemediğin bir şey yok.", "Nothing disliked or marked \"Don't recommend\".")
+                                        : M.t("\(app.hiddenKeys.count) öğe; tek tek geri alabilirsin.",
+                                              "\(app.hiddenKeys.count) items; you can bring them back one by one.")) {
+                            Button(M.t("Göster…", "Show…")) { showDisliked = true }
                                 .controlSize(.small)
-                                .frame(width: 170)
-                            Image(systemName: "sun.max.fill").foregroundStyle(.secondary)
+                                .disabled(app.hiddenKeys.isEmpty)
+                        }
+                        RowDivider()
+                        SettingsRow(M.t("Geçmişi sil", "Erase history")) {
+                            Button(M.t("Sil…", "Erase…")) { confirmErase = true }
+                                .controlSize(.small)
+                                .disabled(historyBytes == 0)
+                                .confirmationDialog(M.t("Dinleme geçmişi silinsin mi?", "Erase your listening history?"),
+                                                    isPresented: $confirmErase) {
+                                    Button(M.t("Sil", "Erase"), role: .destructive) {
+                                        ListeningLog.shared.erase()
+                                        historyBytes = 0
+                                    }
+                                    Button(M.t("Vazgeç", "Cancel"), role: .cancel) {}
+                                } message: {
+                                    Text(M.t("Öneriler sıfırdan öğrenmeye başlar. YouTube hesabındaki geçmişe dokunulmaz.",
+                                             "Recommendations start learning from scratch. The history in your YouTube account is left untouched."))
+                                }
                         }
                     }
-                    .transition(.softReveal)
-                }
-            }
 
-            SettingsGroup(M.t("Dinleme", "Listening")) {
-                SettingsRow(M.t("Ses seviyesini eşitle", "Level the volume"),
-                            detail: M.t("Şarkılar aynı seviyeye getirilir; aralarında ses sıçramaz. Uygulamanın genel sesi biraz kısılır.",
-                                        "Songs are brought to the same level, so the volume doesn't jump between them. The app as a whole gets a little quieter.")) {
-                    Toggle("", isOn: $leveling).switchStyle()
-                        .onChange(of: leveling) { _, _ in app.engine.levelingChanged() }
-                }
-                RowDivider()
-                SettingsRow(M.t("Radyoyu düzenle", "Tidy up radios"),
-                            detail: M.t("Resmî sürümler önce, her şarkı bir kez. Uzun setler ve seçtiğin listeler olduğu gibi kalır.",
-                                        "Official versions first, each song once. Long sets and the lists you pick stay as they are.")) {
-                    Toggle("", isOn: $curateRadio).switchStyle()
-                }
-                RowDivider()
-                SettingsRow(M.t("Ses kalitesi", "Audio quality")) {
-                    Text(app.engine.streamInfo.isEmpty ? M.t("Henüz bir şey çalınmadı", "Nothing played yet") : app.engine.streamInfo)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
-
-            SettingsGroup(M.t("Gizlilik", "Privacy")) {
-                SettingsRow(M.t("Dinleme geçmişi", "Listening history"),
-                            detail: M.t("Öneriler bundan öğrenir; Mac'ten çıkmaz.", "Recommendations learn from it; it never leaves your Mac.")
-                                + " " + historySize) {
-                    Toggle("", isOn: $keepHistory).switchStyle()
-                }
-                RowDivider()
-                SettingsRow(M.t("Beğenilmeyen içerik", "Disliked content"),
-                            detail: app.hiddenKeys.isEmpty
-                                ? M.t("Beğenmediğin ya da önerilmesini istemediğin bir şey yok.", "Nothing disliked or marked \"Don't recommend\".")
-                                : M.t("\(app.hiddenKeys.count) öğe; tek tek geri alabilirsin.",
-                                      "\(app.hiddenKeys.count) items; you can bring them back one by one.")) {
-                    Button(M.t("Göster…", "Show…")) { showDisliked = true }
-                        .controlSize(.small)
-                        .disabled(app.hiddenKeys.isEmpty)
-                }
-                RowDivider()
-                SettingsRow(M.t("Geçmişi sil", "Erase history")) {
-                    Button(M.t("Sil…", "Erase…")) { confirmErase = true }
-                        .controlSize(.small)
-                        .disabled(historyBytes == 0)
-                        .confirmationDialog(M.t("Dinleme geçmişi silinsin mi?", "Erase your listening history?"),
-                                            isPresented: $confirmErase) {
-                            Button(M.t("Sil", "Erase"), role: .destructive) {
-                                ListeningLog.shared.erase()
-                                historyBytes = 0
+                    SettingsGroup(M.t("Genel", "General")) {
+                        SettingsRow(M.t("Dil", "Language"),
+                                    detail: language != (M.launchedChoice ?? "system")
+                                        ? M.t("Uygulama yeniden başlayınca geçerli olur.", "Applies when the app restarts.") : nil) {
+                            Picker("", selection: $language) {
+                                Text(M.t("Sistem", "System")).tag("system")
+                                Text("Türkçe").tag("tr")
+                                Text("English").tag("en")
                             }
-                            Button(M.t("Vazgeç", "Cancel"), role: .cancel) {}
-                        } message: {
-                            Text(M.t("Öneriler sıfırdan öğrenmeye başlar. YouTube hesabındaki geçmişe dokunulmaz.",
-                                     "Recommendations start learning from scratch. The history in your YouTube account is left untouched."))
+                            .segmented()
+                            .onChange(of: language) { _, value in M.chosen = value == "system" ? nil : value }
                         }
-                }
-            }
-
-            SettingsGroup(M.t("Genel", "General")) {
-                SettingsRow(M.t("Dil", "Language"),
-                            detail: language != (M.launchedChoice ?? "system")
-                                ? M.t("Uygulama yeniden başlayınca geçerli olur.", "Applies when the app restarts.") : nil) {
-                    Picker("", selection: $language) {
-                        Text(M.t("Sistem", "System")).tag("system")
-                        Text("Türkçe").tag("tr")
-                        Text("English").tag("en")
+                        if language != (M.launchedChoice ?? "system") {
+                            RowDivider().transition(.softReveal)
+                            SettingsRow(M.t("Yeniden başlat", "Restart")) {
+                                Button(M.t("Şimdi Yeniden Başlat", "Restart Now")) { M.relaunch() }
+                                    .controlSize(.small)
+                            }
+                            .transition(.softReveal)
+                        }
+                        RowDivider()
+                        SettingsRow(M.t("Çalarken çıkmadan önce sor", "Ask before quitting while playing"),
+                                    detail: M.t("Müzik çalarken ⌘Q'ya basınca onay ister; böylece müzik yanlışlıkla kesilmez.",
+                                                "Asks first when you press ⌘Q with music playing, so it doesn't stop by accident.")) {
+                            Toggle("", isOn: $confirmQuit).switchStyle()
+                        }
+                        RowDivider()
+                        UpdateRows()
                     }
-                    .segmented()
-                    .onChange(of: language) { _, value in M.chosen = value == "system" ? nil : value }
                 }
-                if language != (M.launchedChoice ?? "system") {
-                    RowDivider().transition(.softReveal)
-                    SettingsRow(M.t("Yeniden başlat", "Restart")) {
-                        Button(M.t("Şimdi Yeniden Başlat", "Restart Now")) { M.relaunch() }
-                            .controlSize(.small)
-                    }
-                    .transition(.softReveal)
-                }
-                RowDivider()
-                SettingsRow(M.t("Çalarken çıkmadan önce sor", "Ask before quitting while playing"),
-                            detail: M.t("Müzik çalarken ⌘Q'ya basınca onay ister; böylece müzik yanlışlıkla kesilmez.",
-                                        "Asks first when you press ⌘Q with music playing, so it doesn't stop by accident.")) {
-                    Toggle("", isOn: $confirmQuit).switchStyle()
-                }
-                RowDivider()
-                UpdateRows()
+                .background(GeometryReader { g in
+                    Color.clear.preference(key: SettingsContentHeight.self, value: g.size.height)
+                })
             }
+            .scrollIndicators(.automatic)
+            .frame(height: min(contentHeight, maxGroupsHeight))
+            .onPreferenceChange(SettingsContentHeight.self) { contentHeight = $0 }
         }
         .animation(.soft, value: theme.background)
         .animation(.soft, value: language)
@@ -333,6 +355,11 @@ private struct UpdateRows: View {
 /// small slide, never a jump.
 extension Animation {
     static var soft: Animation { .smooth(duration: 0.35) }
+}
+
+private struct SettingsContentHeight: PreferenceKey {
+    static var defaultValue: CGFloat { 0 }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
 extension AnyTransition {

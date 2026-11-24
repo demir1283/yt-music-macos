@@ -108,6 +108,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.makeFirstResponder(nil)
     }
 
+    /// The main window's content height (sheets keep within it).
+    var mainWindowHeight: CGFloat? { mainWindow?.contentLayoutRect.height }
+
     func showMainWindow() {
         mainWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
