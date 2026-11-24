@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 3.1.1" src="https://img.shields.io/badge/version-3.1.1-ff2d55">
+  <img alt="Version 3.2.0" src="https://img.shields.io/badge/version-3.2.0-ff2d55">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-000000?logo=apple">
   <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white">
   <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-3c8dbc">
@@ -99,6 +99,7 @@ No browser and no web player inside: the stream YouTube serves is played as it i
 
 ## What's new
 
+- **3.2 — A disk image and a new Library:** install by dragging the app from YT-Music.dmg, no Terminal needed; a Library of chips, tiles or rows and three orders, with every followed artist, album and playlist, and removing from it in the ••• menu; song lengths and release years on artist pages.
 - **3.1 — Notifications and crossfade:** a bell with the new singles, albums and uploads of the artists and channels you follow; crossfade from the player bar; playing and pausing ease in and out. 3.1.1 keeps songs playing with YouTube's new player.
 - **3.0 — Even volume, sleep timer, your listening:** a summary of your listening, a redesigned home page and artist pages with the artists' own photos, mixes you can open, and disliked content you can bring back.
 - **2.7 — Updates from inside the app:** a new version shows up in the sidebar; one click pulls and builds it.

@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Sürüm 3.1.1" src="https://img.shields.io/badge/s%C3%BCr%C3%BCm-3.1.1-ff2d55">
+  <img alt="Sürüm 3.2.0" src="https://img.shields.io/badge/s%C3%BCr%C3%BCm-3.2.0-ff2d55">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-000000?logo=apple">
   <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white">
   <img alt="MIT Lisansı" src="https://img.shields.io/badge/lisans-MIT-3c8dbc">
@@ -99,6 +99,7 @@ Ana sayfa YouTube Music'in akışı değildir. Her açtığında Mac'inde yenide
 
 ## Yenilikler
 
+- **3.2 — Disk görüntüsü ve yeni Kitaplık:** YT-Music.dmg'den uygulamayı sürükleyerek kurulum, Terminal gerekmez; çipler, kutucuk ya da liste görünümü ve üç sıralamayla, takip ettiğin bütün sanatçılar, albümler ve çalma listeleriyle yeni Kitaplık, ••• menüsünden kitaplıktan kaldırma; sanatçı sayfalarında şarkı süreleri ve çıkış yılları.
 - **3.1 — Bildirimler ve şarkılar arası geçiş:** takip ettiğin sanatçı ve kanalların yeni single, albüm ve yüklemelerini gösteren bir zil; çalar çubuğundan şarkılar arası geçiş; çalma ve duraklatma yumuşakça açılıp kısılır. 3.1.1, YouTube'un yeni oynatıcısıyla şarkıların çalmaya devam etmesini sağlar.
 - **3.0 — Eşit ses, uyku zamanlayıcı, dinleme özetin:** dinleme özetin, sanatçıların kendi fotoğraflarıyla yenilenen ana sayfa ve sanatçı sayfaları, açılabilen mix'ler ve geri alınabilen beğenilmeyen içerik.
 - **2.7 — Uygulama içinden güncelleme:** yeni sürüm kenar çubuğunda görünür; tek tıkla indirilip derlenir.

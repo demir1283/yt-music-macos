@@ -1,6 +1,8 @@
 # Changelog
 
-## 3.2.0 — in progress
+## 3.2.0 — 2026-11-24
+
+Install from a disk image, a new Library, and song lengths on artist pages.
 
 - **Install from a disk image.** Each release now comes with **YT-Music.dmg**, built by GitHub for Apple Silicon and Intel: open it, drag YT Music to Applications, done — no Terminal, git or Command Line Tools. The app isn't signed with a paid Apple certificate, so the first time macOS asks you to allow it (System Settings → Privacy & Security → Open Anyway). Building from source works as before.
 - **A new Library.** Playlists, Albums and Artists are chips like the home page's. Artists are the ones you follow — no longer everyone you ever played a song of. The ••• menu of an album or a saved playlist can take it out of the library (or add one from anywhere), and an artist's can unsubscribe. Each list can be shown as tiles or as rows, and sorted by recently added, A–Z or Z–A; both choices are kept per list. The lists now load in full — before, only YouTube's first page came, so Artists stopped around "A". The first page shows at once and the rest comes in behind it, with a count beside the chips.

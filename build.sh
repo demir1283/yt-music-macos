@@ -11,7 +11,7 @@ APP_NAME="YTMusicMac"            # SwiftPM product / executable name
 DISPLAY_NAME="YT Music"      # name shown in Finder, Dock and the menu bar
 BUNDLE_ID="io.github.demir1283.ytmusic"
 APP="$DISPLAY_NAME.app"
-VERSION="3.2.0-dev"              # shown in "About YT Music"
+VERSION="3.2.0"                  # shown in "About YT Music"
 BUILD_NUMBER="2"
 MODE="${1:-}"
 
