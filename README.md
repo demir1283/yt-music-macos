@@ -5,7 +5,7 @@
 <h1 align="center">YT Music for macOS</h1>
 
 <p align="center">
-  A native YouTube Music client for the Mac, built with SwiftUI.
+  <b>Your YouTube Music as a native Mac app — with its own home page, its own player and its own design.</b>
 </p>
 
 <p align="center">
@@ -23,27 +23,85 @@
   <img src="docs/screenshots/home.png" alt="The home page">
 </p>
 
+<p align="center">
+  <a href="#install"><b>Install</b></a> · <a href="#features">Features</a> · <a href="#privacy">Privacy</a> · <a href="CHANGELOG.md">Changelog</a>
+</p>
+
+YT Music is a YouTube Music client for the Mac, written from scratch in SwiftUI. You sign in with your own account and play your own library and YouTube Music's whole catalogue — but what you see is not YouTube Music's web page in a window. The app decides for itself what goes on the home page, what a radio plays next and what is new for you, from what you listen to on this Mac, and plays it with Apple's own audio player.
+
 > **Unofficial.** Not affiliated with YouTube or Google. “YouTube” and “YouTube Music” are trademarks of Google LLC. You need your own YouTube Music account; Premium unlocks the best audio quality.
 
-## What it adds
+## What makes it different
 
-On top of what YouTube Music offers, the app has a few things of its own:
+<table>
+<tr>
+<td width="33%" valign="top">
 
-- **Home page:** shortcuts, artist stations, quick picks and rows that follow what you listen to.
-- **New releases:** the latest releases of the artists you follow and of the artists you listen to.
-- **Notifications:** recent uploads from the music channels you follow, without Shorts.
-- **Radio cleanup (optional):** prefers official song versions and plays each song once; DJ sets are left as they are.
-- **Listening history on your Mac:** used for the recommendations above and for a summary of your listening (week, month, year); you can turn it off or erase it.
-- **Long sets:** DJ sets and live recordings from regular YouTube, in the genres you listen to.
-- **Sound output:** pick a speaker, Bluetooth, USB or display output for this app only, or use AirPlay.
+### Its own algorithm
+
+The home page isn't YouTube Music's feed. It is put together on your Mac each time you open it, from your listening history, the artists you follow, YouTube Music's catalogue and regular YouTube: artist stations, quick picks, mixes around the artists you play most, artists like the ones you love, long sets in the genres you listen to. Radios are tidied up — official versions first, each song once — and new releases and notifications come only from the artists and channels you follow.
+
+</td>
+<td width="33%" valign="top">
+
+### Its own design
+
+Designed and built for the Mac from the first line: a slowly moving ambient background, tall station cards with the artists' own photos, a deck of picks that turns by itself, artist pages with the artist's portrait, a summary of your listening and a side panel for lyrics and the queue. Nothing jumps: views fade in, and songs ease in and out. Liquid Glass on macOS 26, light and dark mode, a choice of accent colours.
+
+</td>
+<td width="33%" valign="top">
+
+### Its own player
+
+No browser and no web player inside: the stream YouTube serves is played as it is by Apple's AVPlayer — 256 kbps AAC with Premium. Even volume between songs, crossfade, a sleep timer, and a sound output of its own (a speaker, Bluetooth, USB, a display, or AirPlay). About 1.5 % CPU and ~170 MB of memory while playing in the background.
+
+</td>
+</tr>
+</table>
+
+## A closer look
+
+<table>
+<tr>
+<td width="75%"><img src="docs/screenshots/artist.png" alt="An artist page with the artist's own photo, lyrics beside it"></td>
+<td width="25%"><img src="docs/screenshots/notifications.png" alt="New music from the artists you follow"></td>
+</tr>
+<tr>
+<td align="center"><sub>Artist pages with the artist's own photo · time-synced lyrics and the queue beside the music</sub></td>
+<td align="center"><sub>New music from the artists and channels you follow</sub></td>
+</tr>
+</table>
+
+## Features
+
+**Listening**
+- Even volume between songs, measured by YouTube for every song.
+- Crossfade of 3 to 12 seconds, from a button in the player bar; never within an album played in order or a DJ set.
+- Playing, pausing and changing songs ease in and out; a song that simply ends hands over to the next as it is.
+- Sleep timer: after 15 minutes to 1.5 hours, or at the end of the song, fading out.
+- Time-synced lyrics and the queue in a side panel, and a sound output for this app only.
+
+**Discovery**
+- A home page built for you, with artist stations, quick picks, mixes, similar artists and long sets.
+- New releases from the artists you follow and the ones you listen to.
+- A bell with the latest music from the artists and channels you follow — singles, albums and uploads, no Shorts.
+- Your listening: your top artists, channels and songs of the week, month, year or all time.
+
+**Your library**
+- Playlists, albums, artists, liked music and history; create, edit and reorder playlists.
+- Search with suggestions as you type.
+- Disliked content in one place, ready to bring back.
+
+**On the Mac**
+- Media keys, Control Center, the Dock menu and keyboard shortcuts.
+- English or Turkish, following your Mac or your choice.
+- Updates from inside the app, and a question before quitting while music plays.
 
 ## What's new
 
-- **3.1 — Notifications and crossfade:** a bell at the top right with the new singles, albums and uploads of the artists and channels you follow; crossfade between songs from the player bar; playing and pausing ease in and out; a question before quitting while music plays.
-- **3.0 — Even volume, sleep timer, your listening:** even volume between songs, a sleep timer, a summary of your listening, a redesigned home page and artist pages with the artists' own photos, mixes you can open, and disliked content you can bring back.
-- **2.7 — Updates from inside the app:** a new version shows up in the sidebar; one click pulls and builds it. See [Updating](#updating).
-- **2.6 — English interface:** the whole app follows your Mac's language (English or Turkish), or the one you pick in Settings.
-- **2.5 — A new “New releases” page:** the latest releases of the artists you follow and listen to; every channel of a joint upload is a link.
+- **3.1 — Notifications and crossfade:** a bell with the new singles, albums and uploads of the artists and channels you follow; crossfade from the player bar; playing and pausing ease in and out. 3.1.1 keeps songs playing with YouTube's new player.
+- **3.0 — Even volume, sleep timer, your listening:** a summary of your listening, a redesigned home page and artist pages with the artists' own photos, mixes you can open, and disliked content you can bring back.
+- **2.7 — Updates from inside the app:** a new version shows up in the sidebar; one click pulls and builds it.
 
 The full list is in the [changelog](CHANGELOG.md).
 
@@ -67,13 +125,6 @@ The app checks GitHub for a new version at launch and once a day. When one is ou
 By hand, in the project folder: `git pull && ./build.sh --install`. To get an e-mail for each version, use **Watch → Custom → Releases** on this page.
 
 **Coming from 2.6 or earlier:** update by hand once; from 2.7 on the app does it.
-
-## Why a native app
-
-- **No browser inside.** SwiftUI interface and Apple's own audio player. No Electron, no web player.
-- **Full quality.** With Premium, 256 kbps AAC, played as it is.
-- **Light.** About 1.5 % CPU and ~170 MB of memory while playing in the background (measured on the author's MacBook).
-- **At home on macOS.** Liquid Glass on macOS 26, media keys, Control Center, Dock menu, light and dark mode.
 
 ## Keyboard shortcuts
 
@@ -136,7 +187,7 @@ Turkish and English are both welcome. Never post your account name, cookies or t
 
 - [yt-dlp-ejs](https://github.com/yt-dlp/ejs) (public domain), with [meriyah](https://github.com/meriyah/meriyah) (ISC) and [astring](https://github.com/davidbonnet/astring) (MIT).
 - [LRCLIB](https://lrclib.net) for time-synced lyrics.
-- Design inspired by Apple Music, Spotify and [Kaset](https://github.com/sozercan/kaset).
+- [Kaset](https://github.com/sozercan/kaset), for showing early on what a native YouTube Music client on the Mac could be.
 
 ## License
 

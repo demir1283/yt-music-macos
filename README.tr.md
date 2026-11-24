@@ -5,7 +5,7 @@
 <h1 align="center">YT Music for macOS</h1>
 
 <p align="center">
-  Mac için SwiftUI ile yazılmış yerel bir YouTube Music istemcisi.
+  <b>YouTube Music'in Mac'e özel, yerel uygulaması — kendi ana sayfası, kendi oynatıcısı ve kendi tasarımıyla.</b>
 </p>
 
 <p align="center">
@@ -23,27 +23,85 @@
   <img src="docs/screenshots/home.png" alt="Ana sayfa">
 </p>
 
-> **Resmî değildir.** YouTube veya Google ile bağlantısı yoktur. “YouTube” ve “YouTube Music”, Google LLC'nin ticari markalarıdır. Kendi YouTube Music hesabınız gerekir; en iyi ses kalitesi için Premium gerekir.
+<p align="center">
+  <a href="#kurulum"><b>Kurulum</b></a> · <a href="#özellikler">Özellikler</a> · <a href="#gizlilik">Gizlilik</a> · <a href="CHANGELOG.md">Değişiklikler</a>
+</p>
 
-## Neler ekliyor
+YT Music, Mac için SwiftUI ile sıfırdan yazılmış bir YouTube Music istemcisi. Kendi hesabınla giriş yapar, kendi kitaplığını ve YouTube Music'in bütün kataloğunu dinlersin; ama karşına çıkan şey bir pencereye konmuş YouTube Music web sayfası değildir. Ana sayfada ne olacağına, bir radyonun sırada ne çalacağına, senin için neyin yeni olduğuna uygulama kendisi karar verir — bu Mac'te dinlediklerine göre — ve hepsini Apple'ın kendi ses oynatıcısıyla çalar.
 
-YouTube Music'in sunduklarına ek olarak uygulamanın kendine ait birkaç özelliği var:
+> **Resmî değildir.** YouTube veya Google ile bağlantısı yoktur. “YouTube” ve “YouTube Music”, Google LLC'nin ticari markalarıdır. Kendi YouTube Music hesabın gerekir; en iyi ses kalitesi için Premium gerekir.
 
-- **Ana sayfa:** kısayollar, sanatçı istasyonları, hızlı seçimler ve dinlediklerine göre değişen satırlar.
-- **Yeni çıkanlar:** takip ettiğin ve dinlediğin sanatçıların son yayınları.
-- **Bildirimler:** takip ettiğin müzik kanallarının son yüklemeleri, Shorts olmadan.
-- **Radyo düzenleme (isteğe bağlı):** resmî şarkı sürümlerini öne alır, her şarkıyı bir kez çalar; DJ setlerine dokunmaz.
-- **Mac'inde dinleme geçmişi:** yukarıdaki öneriler ve dinleme özetin (hafta, ay, yıl) için kullanılır; kapatabilir veya silebilirsin.
-- **Uzun setler:** dinlediğin türlerde, normal YouTube'dan DJ setleri ve canlı kayıtlar.
-- **Ses çıkışı:** yalnızca bu uygulama için hoparlör, Bluetooth, USB veya ekran çıkışı seç; ya da AirPlay kullan.
+## Onu farklı kılan
+
+<table>
+<tr>
+<td width="33%" valign="top">
+
+### Kendi algoritması
+
+Ana sayfa YouTube Music'in akışı değildir. Her açtığında Mac'inde yeniden kurulur: dinleme geçmişinden, takip ettiğin sanatçılardan, YouTube Music'in kataloğundan ve normal YouTube'dan. Sanatçı istasyonları, hızlı seçimler, en çok dinlediğin sanatçıların etrafında mix'ler, sevdiğin sanatçılara benzeyenler, dinlediğin türlerde uzun setler. Radyolar düzenlenir — önce resmî sürümler, her şarkı bir kez — yeni çıkanlar ve bildirimler yalnızca takip ettiğin sanatçı ve kanallardan gelir.
+
+</td>
+<td width="33%" valign="top">
+
+### Kendi tasarımı
+
+İlk satırından itibaren Mac için tasarlandı ve yazıldı: yavaşça akan bir ortam arka planı, sanatçıların kendi fotoğraflarıyla dikey istasyon kartları, kendiliğinden dönen bir öneri destesi, sanatçının portresiyle açılan sanatçı sayfaları, dinleme özetin ve şarkı sözleriyle sıra için bir yan panel. Hiçbir şey birden belirmez: görünümler solarak gelir, şarkılar yumuşakça açılıp kısılır. macOS 26'da Liquid Glass, açık ve koyu mod, seçilebilir vurgu renkleri.
+
+</td>
+<td width="33%" valign="top">
+
+### Kendi oynatıcısı
+
+İçinde tarayıcı da web oynatıcı da yok: YouTube'un gönderdiği akış, Apple'ın AVPlayer'ı ile olduğu gibi çalınır — Premium ile 256 kbps AAC. Şarkılar arasında eşit ses, şarkılar arası geçiş, uyku zamanlayıcı ve uygulamaya özel ses çıkışı (hoparlör, Bluetooth, USB, ekran ya da AirPlay). Arka planda çalarken yaklaşık %1,5 işlemci ve ~170 MB bellek.
+
+</td>
+</tr>
+</table>
+
+## Yakından
+
+<table>
+<tr>
+<td width="75%"><img src="docs/screenshots/artist.png" alt="Sanatçının kendi fotoğrafıyla sanatçı sayfası, yanında şarkı sözleri"></td>
+<td width="25%"><img src="docs/screenshots/notifications.png" alt="Takip ettiğin sanatçılardan yeni müzik"></td>
+</tr>
+<tr>
+<td align="center"><sub>Sanatçının kendi fotoğrafıyla sanatçı sayfaları · müziğin yanında zamanlı şarkı sözleri ve sıra</sub></td>
+<td align="center"><sub>Takip ettiğin sanatçı ve kanallardan yeni müzik</sub></td>
+</tr>
+</table>
+
+## Özellikler
+
+**Dinleme**
+- Şarkılar arasında eşit ses; her şarkının ses yüksekliği YouTube'un ölçümüne göre ayarlanır.
+- Çalar çubuğundaki düğmeden 3–12 saniyelik şarkılar arası geçiş; sırasıyla çalınan bir albümde ya da DJ setinde yapılmaz.
+- Çalma, duraklatma ve şarkı değiştirme yumuşakça açılıp kısılır; kendiliğinden biten şarkı sıradakine olduğu gibi geçer.
+- Uyku zamanlayıcı: 15 dakikadan 1,5 saate kadar ya da şarkı bitince, sesi kısarak.
+- Yan panelde zamanlı şarkı sözleri ve sıra; yalnızca bu uygulama için ses çıkışı.
+
+**Keşif**
+- Senin için kurulan bir ana sayfa: sanatçı istasyonları, hızlı seçimler, mix'ler, benzer sanatçılar ve uzun setler.
+- Takip ettiğin ve dinlediğin sanatçıların yeni çıkanları.
+- Takip ettiğin sanatçı ve kanallardan son müzikleri gösteren bir zil — single, albüm ve yüklemeler, Shorts olmadan.
+- Dinleme özetin: haftanın, ayın, yılın ya da tüm zamanların sanatçıları, kanalları ve şarkıları.
+
+**Kitaplığın**
+- Çalma listeleri, albümler, sanatçılar, beğendiklerin ve geçmişin; çalma listesi oluşturma, düzenleme ve sıralama.
+- Yazarken öneriler sunan arama.
+- Beğenmediğin içerik tek yerde, istediğin an geri alınabilir.
+
+**Mac'te**
+- Medya tuşları, Denetim Merkezi, Dock menüsü ve klavye kısayolları.
+- Türkçe ya da İngilizce; Mac'inin diline ya da senin seçimine göre.
+- Uygulama içinden güncelleme ve müzik çalarken çıkmadan önce bir soru.
 
 ## Yenilikler
 
-- **3.1 — Bildirimler ve şarkılar arası geçiş:** sağ üstte, takip ettiğin sanatçı ve kanalların yeni single, albüm ve yüklemelerini gösteren bir zil; çalar çubuğundan şarkılar arası yumuşak geçiş; çalma ve duraklatma yumuşakça açılıp kısılır; müzik çalarken çıkmadan önce sorar.
-- **3.0 — Eşit ses, uyku zamanlayıcı, dinleme özetin:** şarkılar arasında eşit ses, uyku zamanlayıcı, dinleme özetin, sanatçıların kendi fotoğraflarıyla yenilenen ana sayfa ve sanatçı sayfaları, açılabilen mix'ler ve geri alınabilen beğenilmeyen içerik.
-- **2.7 — Uygulama içinden güncelleme:** yeni sürüm kenar çubuğunda görünür; tek tıkla indirilip derlenir. Bkz. [Güncelleme](#güncelleme).
-- **2.6 — İngilizce arayüz:** uygulamanın tamamı Mac'inin diline (Türkçe veya İngilizce) ya da Ayarlar'da seçtiğine uyar.
-- **2.5 — Yeni “Yeni çıkanlar” sayfası:** takip ettiğin ve dinlediğin sanatçıların son yayınları; ortak yüklemelerde her kanal bir bağlantı.
+- **3.1 — Bildirimler ve şarkılar arası geçiş:** takip ettiğin sanatçı ve kanalların yeni single, albüm ve yüklemelerini gösteren bir zil; çalar çubuğundan şarkılar arası geçiş; çalma ve duraklatma yumuşakça açılıp kısılır. 3.1.1, YouTube'un yeni oynatıcısıyla şarkıların çalmaya devam etmesini sağlar.
+- **3.0 — Eşit ses, uyku zamanlayıcı, dinleme özetin:** dinleme özetin, sanatçıların kendi fotoğraflarıyla yenilenen ana sayfa ve sanatçı sayfaları, açılabilen mix'ler ve geri alınabilen beğenilmeyen içerik.
+- **2.7 — Uygulama içinden güncelleme:** yeni sürüm kenar çubuğunda görünür; tek tıkla indirilip derlenir.
 
 Tam liste [değişiklik günlüğünde](CHANGELOG.md).
 
@@ -67,13 +125,6 @@ Uygulama açılışta ve günde bir kez GitHub'da yeni sürüm olup olmadığın
 Elle güncellemek için proje klasöründe: `git pull && ./build.sh --install`. Her sürümde e-posta almak için bu sayfada **Watch → Custom → Releases**'ı seç.
 
 **2.6 veya öncesinden geliyorsan:** bir kez elle güncelle; 2.7'den sonra uygulama kendisi yapar.
-
-## Neden yerel bir uygulama
-
-- **İçinde tarayıcı yok.** SwiftUI arayüzü ve Apple'ın kendi ses oynatıcısı. Electron yok, web oynatıcı yok.
-- **Tam kalite.** Premium ile 256 kbps AAC, olduğu gibi çalınır.
-- **Hafif.** Arka planda çalarken yaklaşık %1,5 CPU ve ~170 MB bellek (geliştiricinin MacBook'unda ölçüldü).
-- **macOS'a uyumlu.** macOS 26'da Liquid Glass, medya tuşları, Denetim Merkezi, Dock menüsü, açık ve koyu mod.
 
 ## Klavye kısayolları
 
@@ -136,7 +187,7 @@ Türkçe de İngilizce de olur. Hesap adını, çerezleri veya token'ları asla 
 
 - [yt-dlp-ejs](https://github.com/yt-dlp/ejs) (kamu malı), [meriyah](https://github.com/meriyah/meriyah) (ISC) ve [astring](https://github.com/davidbonnet/astring) (MIT) ile.
 - Eşzamanlı şarkı sözleri için [LRCLIB](https://lrclib.net).
-- Tasarım Apple Music, Spotify ve [Kaset](https://github.com/sozercan/kaset)'ten esinlendi.
+- [Kaset](https://github.com/sozercan/kaset), Mac için yerel bir YouTube Music istemcisinin neye benzeyebileceğini erkenden gösterdiği için.
 
 ## Lisans
 
