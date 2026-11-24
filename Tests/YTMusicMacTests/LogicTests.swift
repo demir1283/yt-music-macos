@@ -239,3 +239,19 @@ final class PlayerVariantTests: XCTestCase {
         XCTAssertEqual(url.map { SigSolver.playerID($0) }, "b485e332")
     }
 }
+
+/// The disk image of a release, for apps installed from it.
+final class ReleaseAssetTests: XCTestCase {
+    func testTheDiskImageIsFoundByItsName() {
+        let release: [String: Any] = ["assets": [
+            ["name": "notes.txt", "browser_download_url": "https://example.invalid/notes.txt"],
+            ["name": "YT-Music.dmg", "browser_download_url": "https://github.com/o/r/releases/download/v3.2.0/YT-Music.dmg"],
+        ]]
+        XCTAssertEqual(Updater.dmgAsset(in: release)?.lastPathComponent, "YT-Music.dmg")
+    }
+
+    func testAReleaseWithoutOneHasNone() {
+        XCTAssertNil(Updater.dmgAsset(in: ["assets": [] as [[String: Any]]]))
+        XCTAssertNil(Updater.dmgAsset(in: [:]))
+    }
+}

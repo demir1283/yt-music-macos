@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.2.0 — in progress
+
+- **Install from a disk image.** Each release now comes with **YT-Music.dmg**, built by GitHub for Apple Silicon and Intel: open it, drag YT Music to Applications, done — no Terminal, git or Command Line Tools. The app isn't signed with a paid Apple certificate, so the first time macOS asks you to allow it (System Settings → Privacy & Security → Open Anyway). Building from source works as before.
+- **Updates for the .dmg app.** "Update" in the sidebar downloads the new disk image, copies the app over the old one (swapped in one step, never half replaced) and opens it again; macOS doesn't ask again. Copies built from source keep updating with `git pull` and `build.sh`.
+
 ## 3.1.1 — 2026-11-24
 
 A fix for YouTube's new player script, which kept songs from playing, and Settings that fit a laptop screen.

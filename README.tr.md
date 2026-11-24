@@ -107,7 +107,22 @@ Tam liste [değişiklik günlüğünde](CHANGELOG.md).
 
 ## Kurulum
 
-Uygulamayı kendin derlersin. Yaklaşık bir dakika sürer, Xcode gerekmez:
+<p>
+  <a href="https://github.com/demir1283/yt-music-macos/releases/latest/download/YT-Music.dmg"><b>⬇︎ YT Music'i indir (.dmg)</b></a> — macOS 14 veya üstü, Apple Silicon ve Intel
+</p>
+
+1. **YT-Music.dmg**'yi aç ve **YT Music**'i **Uygulamalar** klasörüne sürükle.
+2. YT Music'i aç. İlk seferde macOS uygulamayı doğrulayamadığını söyler — uygulama ücretli bir Apple geliştirici sertifikasıyla imzalı değil. **Bitti**'ye tıkla.
+3. **Sistem Ayarları → Gizlilik ve Güvenlik**'i aç, **Güvenlik** bölümüne kadar in ve YT Music'in yanındaki **Yine de Aç**'a tıkla, ardından parolanla onayla. Bu yalnızca bir kez gerekir.
+4. Kenar çubuğunda **Giriş yap**'a tıklayıp Google ile giriş yap.
+
+### Güncelleme
+
+Uygulama açılışta ve günde bir kez GitHub'da yeni sürüm olup olmadığına bakar. Yeni sürüm çıktığında kenar çubuğunda görünür; **Güncelle** onu indirir, yerine koyar ve uygulamayı yeniden açar — bu kez macOS bir şey sormaz. Denetimi **Ayarlar → Güncelleme**'den kapatabilirsin. Her sürümde e-posta almak için bu sayfada **Watch → Custom → Releases**'ı seç.
+
+### Kaynaktan derleme
+
+Kendin derlemeyi tercih edersen (yaklaşık bir dakika, Xcode gerekmez):
 
 ```bash
 xcode-select --install          # bir kez, Command Line Tools kurulu değilse
@@ -116,15 +131,7 @@ cd yt-music-macos
 ./build.sh --install            # uygulamayı derler ve /Applications'a kopyalar
 ```
 
-Sonra kenar çubuğunda **Giriş yap**'a tıklayıp Google ile giriş yap. macOS 14 veya üstü gerekir.
-
-### Güncelleme
-
-Uygulama açılışta ve günde bir kez GitHub'da yeni sürüm olup olmadığına bakar. Yeni sürüm çıktığında kenar çubuğunda görünür: **Güncelle**, uygulamayı derlediğin klasörde `git pull` ve `./build.sh` çalıştırır, ardından yeni sürüm açılır. Denetimi **Ayarlar → Güncelleme**'den kapatabilirsin.
-
-Elle güncellemek için proje klasöründe: `git pull && ./build.sh --install`. Her sürümde e-posta almak için bu sayfada **Watch → Custom → Releases**'ı seç.
-
-**2.6 veya öncesinden geliyorsan:** bir kez elle güncelle; 2.7'den sonra uygulama kendisi yapar.
+Böyle derlenen kopya kendini aynı klasörden günceller: **Güncelle** orada `git pull` ve `./build.sh` çalıştırır. Elle: `git pull && ./build.sh --install`.
 
 ## Klavye kısayolları
 

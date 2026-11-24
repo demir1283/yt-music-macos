@@ -4,6 +4,8 @@
 *.app/
 *.xcodeproj/
 DerivedData/
+dist/
+*.dmg
 
 # Diagnostics and local files
 *.log

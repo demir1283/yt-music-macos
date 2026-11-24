@@ -2,6 +2,8 @@
 # Builds "YT Music.app" next to this script.
 #   ./build.sh            → release build
 #   ./build.sh --install  → also copies it to /Applications
+#   ./build.sh --package  → a universal build (Apple Silicon + Intel) in dist/YT-Music.dmg,
+#                           for GitHub Releases (needs Xcode; the release workflow runs it)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -9,8 +11,9 @@ APP_NAME="YTMusicMac"            # SwiftPM product / executable name
 DISPLAY_NAME="YT Music"      # name shown in Finder, Dock and the menu bar
 BUNDLE_ID="io.github.demir1283.ytmusic"
 APP="$DISPLAY_NAME.app"
-VERSION="3.1.1"                  # shown in "About YT Music"
+VERSION="3.2.0-dev"              # shown in "About YT Music"
 BUILD_NUMBER="2"
+MODE="${1:-}"
 
 if ! command -v swift >/dev/null 2>&1; then
   echo "Swift bulunamadı. Önce şunu çalıştır:  xcode-select --install" >&2
@@ -27,9 +30,16 @@ fi
 # The script the app runs is edited in Tools/bridge.js; its Swift copy is written here.
 ./Tools/gen-bridge.sh
 
-echo "▸ Derleniyor (release)…"
-swift build -c release
-BIN_DIR="$(swift build -c release --show-bin-path)"
+if [ "$MODE" = "--package" ]; then
+  # One binary for both kinds of Mac.
+  ARCHS=(--arch arm64 --arch x86_64)
+  echo "▸ Derleniyor (release, Apple Silicon + Intel)…"
+else
+  ARCHS=()
+  echo "▸ Derleniyor (release)…"
+fi
+swift build -c release ${ARCHS[@]+"${ARCHS[@]}"}
+BIN_DIR="$(swift build -c release ${ARCHS[@]+"${ARCHS[@]}"} --show-bin-path)"
 echo "$TOOLCHAIN" > .build/.toolchain
 
 echo "▸ $APP paketleniyor…"
@@ -70,7 +80,13 @@ for LANG_DIR in en tr; do
 done
 
 # The folder the app is built from: the in-app updater runs git pull and build.sh there.
-SOURCE_XML="$(pwd | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')"
+# A packaged app (the .dmg) has none: it updates itself from the next .dmg.
+if [ "$MODE" = "--package" ]; then
+  SOURCE_KEY=""
+else
+  SOURCE_XML="$(pwd | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')"
+  SOURCE_KEY="<key>YTMSourcePath</key><string>$SOURCE_XML</string>"
+fi
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -94,18 +110,34 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>NSHighResolutionCapable</key><true/>
   <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
-  <key>YTMSourcePath</key><string>$SOURCE_XML</string>
+  $SOURCE_KEY
 </dict>
 </plist>
 PLIST
 
 # The app keeps running when its window is closed; quit it so the new build is what opens.
-osascript -e "tell application id \"$BUNDLE_ID\" to quit" >/dev/null 2>&1 || true
-pkill -x "$APP_NAME" >/dev/null 2>&1 || true
-sleep 1
+if [ "$MODE" != "--package" ]; then
+  osascript -e "tell application id \"$BUNDLE_ID\" to quit" >/dev/null 2>&1 || true
+  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
+  sleep 1
+fi
 
 echo "▸ İmzalanıyor (ad-hoc)…"
 codesign --force --deep --sign - "$APP" >/dev/null
+
+if [ "$MODE" = "--package" ]; then
+  # The disk image: the app and a link to Applications to drag it onto.
+  echo "▸ Disk görüntüsü hazırlanıyor…"
+  rm -rf dist
+  mkdir -p dist/dmg
+  ditto "$APP" "dist/dmg/$APP"
+  ln -s /Applications dist/dmg/Applications
+  hdiutil create -volname "$DISPLAY_NAME" -srcfolder dist/dmg -ov -format UDZO -fs HFS+ dist/YT-Music.dmg >/dev/null
+  rm -rf dist/dmg
+  lipo -archs "$APP/Contents/MacOS/$APP_NAME"
+  echo "✓ Hazır: $(pwd)/dist/YT-Music.dmg ($(du -h dist/YT-Music.dmg | cut -f1))"
+  exit 0
+fi
 
 if [ "${1:-}" = "--install" ]; then
   echo "▸ /Applications içine kopyalanıyor…"

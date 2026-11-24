@@ -5,9 +5,13 @@ import Observation
 ///
 /// At launch and then once a day the app asks GitHub for the latest release: one public
 /// request, no account, nothing sent but the app's version (in the User-Agent). When it
-/// is newer than this build, the sidebar offers it. "Update" runs the two steps of a
-/// manual update in the folder the app was built from (build.sh records it):
-/// `git pull --ff-only`, then `./build.sh` — which quits this copy and opens the new one.
+/// is newer than this build, the sidebar offers it. "Update" works the way the app was
+/// installed:
+/// - Built from source (build.sh records the folder): `git pull --ff-only`, then
+///   `./build.sh` — which quits this copy and opens the new one.
+/// - From the .dmg: the release's `YT-Music.dmg` is downloaded, its app copied over this
+///   one, and the app opens again. Downloaded by the app itself, it isn't quarantined, so
+///   macOS doesn't ask again.
 @MainActor @Observable
 final class Updater {
     static let shared = Updater()
@@ -16,6 +20,17 @@ final class Updater {
         let version: String
         let notes: String
         let url: URL
+        /// The release's disk image, when it has one.
+        var dmg: URL? = nil
+    }
+
+    /// The disk image attached to a release (GitHub's `assets`), by its fixed name.
+    nonisolated static let dmgName = "YT-Music.dmg"
+    nonisolated static func dmgAsset(in release: [String: Any]) -> URL? {
+        let assets = release["assets"] as? [[String: Any]] ?? []
+        return assets.first { ($0["name"] as? String) == dmgName }
+            .flatMap { $0["browser_download_url"] as? String }
+            .flatMap(URL.init(string:))
     }
 
     enum Phase: Equatable {
@@ -73,7 +88,16 @@ final class Updater {
         return url
     }
 
-    var canUpdateHere: Bool { Self.sourceFolder != nil }
+    /// This copy can be replaced in place (installed from the .dmg, in a folder the user
+    /// can write to).
+    static var canReplaceInPlace: Bool {
+        let folder = Bundle.main.bundleURL.deletingLastPathComponent().path
+        return FileManager.default.isWritableFile(atPath: folder)
+    }
+
+    var canUpdateHere: Bool {
+        Self.sourceFolder != nil || (available?.dmg != nil && Self.canReplaceInPlace)
+    }
 
     private init() {}
 
@@ -116,7 +140,8 @@ final class Updater {
             let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
             if Self.isNewer(version, than: Self.current) {
                 let page = (json["html_url"] as? String).flatMap(URL.init(string:)) ?? Self.releasesPage
-                let release = Release(version: version, notes: json["body"] as? String ?? "", url: page)
+                let release = Release(version: version, notes: json["body"] as? String ?? "", url: page,
+                                      dmg: Self.dmgAsset(in: json))
                 if release != available { dismissed = false }
                 available = release
             } else {
@@ -152,7 +177,12 @@ final class Updater {
     /// Pulls the new version and builds it. On success build.sh quits this copy and opens
     /// the new one; if a step fails, the old app keeps running and shows the output.
     func update() {
-        guard let folder = Self.sourceFolder, !phase.isBusy else { return }
+        guard !phase.isBusy else { return }
+        if Self.sourceFolder == nil, let dmg = available?.dmg {
+            updateFromDiskImage(dmg)
+            return
+        }
+        guard let folder = Self.sourceFolder else { return }
         phase = .updating(0)
         let install = Bundle.main.bundlePath.hasPrefix("/Applications/") ? " --install" : ""
         let logURL = folder.appendingPathComponent(".build/update.log")
@@ -194,6 +224,98 @@ final class Updater {
         progressTimer?.invalidate()
         progressTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { _ in
             Task { @MainActor in Updater.shared.readProgress(logURL) }
+        }
+    }
+
+    // MARK: From the .dmg
+
+    private struct UpdateError: LocalizedError {
+        let errorDescription: String?
+    }
+
+    /// Download progress, reported by URLSession.
+    private final class DownloadProgress: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+        func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64,
+                        totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+            guard totalBytesExpectedToWrite > 0 else { return }
+            let fraction = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+            Task { @MainActor in Updater.shared.downloaded(fraction) }
+        }
+        func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {}
+    }
+
+    private func downloaded(_ fraction: Double) {
+        guard case .updating = phase else { return }
+        phase = .updating(0.05 + 0.8 * min(1, fraction))
+    }
+
+    /// Downloads the new disk image, copies its app over this one and opens it again. If
+    /// a step fails, this copy keeps running and the card says why.
+    private func updateFromDiskImage(_ dmg: URL) {
+        phase = .updating(0.02)
+        EngineLog.write("Güncelleme başladı (dmg): \(available?.version ?? "?")")
+        Task {
+            do {
+                var request = URLRequest(url: dmg)
+                request.setValue("YTMusicMac/\(Self.current)", forHTTPHeaderField: "User-Agent")
+                let (file, response) = try await URLSession.shared.download(for: request, delegate: DownloadProgress())
+                guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                    throw UpdateError(errorDescription: M.t("Disk görüntüsü indirilemedi.", "The disk image couldn't be downloaded."))
+                }
+                let image = FileManager.default.temporaryDirectory.appendingPathComponent("YT-Music-update.dmg")
+                try? FileManager.default.removeItem(at: image)
+                try FileManager.default.moveItem(at: file, to: image)
+                phase = .updating(0.9)
+                let output = try await Self.install(image: image, over: Bundle.main.bundleURL)
+                try? FileManager.default.removeItem(at: image)
+                EngineLog.write("Güncelleme kuruldu (dmg)\(output.isEmpty ? "" : ": " + output.suffix(200))")
+                phase = .restarting
+                M.relaunch()
+            } catch {
+                phase = .failed(error.localizedDescription)
+                EngineLog.write("Güncelleme başarısız (dmg): \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Mounts the image, copies its app next to `target` and swaps the two (a rename on the
+    /// same disk, so this copy is never half replaced), then unmounts.
+    private nonisolated static func install(image: URL, over target: URL) async throws -> String {
+        let script = """
+        set -e
+        IMAGE="$0"; TARGET="$1"
+        DIR="$(dirname "$TARGET")"; NAME="$(basename "$TARGET")"
+        MNT="$(mktemp -d /tmp/ytmusic-update.XXXXXX)"
+        hdiutil attach -nobrowse -readonly -noautoopen -mountpoint "$MNT" "$IMAGE" >/dev/null
+        trap 'hdiutil detach "$MNT" -quiet >/dev/null 2>&1 || true; rmdir "$MNT" 2>/dev/null || true' EXIT
+        [ -d "$MNT/$NAME" ] || { echo "Disk görüntüsünde $NAME yok"; exit 3; }
+        rm -rf "$DIR/.$NAME.new" "$DIR/.$NAME.old"
+        ditto "$MNT/$NAME" "$DIR/.$NAME.new"
+        codesign --verify "$DIR/.$NAME.new"
+        mv "$TARGET" "$DIR/.$NAME.old"
+        mv "$DIR/.$NAME.new" "$TARGET"
+        rm -rf "$DIR/.$NAME.old"
+        xattr -dr com.apple.quarantine "$TARGET" 2>/dev/null || true
+        echo "kuruldu: $TARGET"
+        """
+        return try await withCheckedThrowingContinuation { continuation in
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/bin/bash")
+            task.arguments = ["-c", script, image.path, target.path]
+            let pipe = Pipe()
+            task.standardOutput = pipe
+            task.standardError = pipe
+            task.terminationHandler = { process in
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let output = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+                if process.terminationStatus == 0 {
+                    continuation.resume(returning: output)
+                } else {
+                    continuation.resume(throwing: UpdateError(errorDescription: output.isEmpty
+                        ? M.t("Yeni sürüm kurulamadı.", "The new version couldn't be installed.") : output))
+                }
+            }
+            do { try task.run() } catch { continuation.resume(throwing: error) }
         }
     }
 

@@ -107,7 +107,22 @@ The full list is in the [changelog](CHANGELOG.md).
 
 ## Install
 
-You build the app yourself. It takes about a minute and needs no Xcode:
+<p>
+  <a href="https://github.com/demir1283/yt-music-macos/releases/latest/download/YT-Music.dmg"><b>⬇︎ Download YT Music (.dmg)</b></a> — macOS 14 or later, Apple Silicon and Intel
+</p>
+
+1. Open **YT-Music.dmg** and drag **YT Music** onto **Applications**.
+2. Open YT Music. The first time, macOS says it can't verify the app — the app isn't signed with a paid Apple developer certificate. Click **Done**.
+3. Open **System Settings → Privacy & Security**, scroll down to **Security** and click **Open Anyway** next to YT Music, then confirm with your password. This is needed only once.
+4. Click **Sign in** in the sidebar and log in with Google.
+
+### Updating
+
+The app checks GitHub for a new version at launch and once a day. When one is out, the sidebar shows it, and **Update** downloads it, puts it in place and opens it again — no questions from macOS this time. You can turn the check off in **Settings → Updates**. To get an e-mail for each version, use **Watch → Custom → Releases** on this page.
+
+### Building from source
+
+If you'd rather build it yourself (about a minute, no Xcode needed):
 
 ```bash
 xcode-select --install          # once, if the Command Line Tools aren't installed
@@ -116,15 +131,7 @@ cd yt-music-macos
 ./build.sh --install            # builds the app and copies it to /Applications
 ```
 
-Then click **Sign in** in the sidebar and log in with Google. Requires macOS 14 or later.
-
-### Updating
-
-The app checks GitHub for a new version at launch and once a day. When one is out, the sidebar shows it: **Update** runs `git pull` and `./build.sh` in the folder you built the app from, then the new version opens. You can turn the check off in **Settings → Updates**.
-
-By hand, in the project folder: `git pull && ./build.sh --install`. To get an e-mail for each version, use **Watch → Custom → Releases** on this page.
-
-**Coming from 2.6 or earlier:** update by hand once; from 2.7 on the app does it.
+A copy built this way updates itself from the same folder: **Update** runs `git pull` and `./build.sh` there. By hand: `git pull && ./build.sh --install`.
 
 ## Keyboard shortcuts
 
