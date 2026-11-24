@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- For contributors: a commit is built on GitHub once. When main is fast-forwarded to a commit that already passed on next (as a release does), a small Linux job finds that result — waiting for it if next is still building — and the Mac build is skipped.
+
 ## 3.1.0 — 2026-11-23
 
 A notifications bell for new music from the artists and channels you follow, crossfade between songs, and nothing starting or stopping abruptly.

@@ -1,16 +1,59 @@
 # Builds the app and runs its tests on every push and pull request, on a Mac with
 # Xcode 26 (the app uses macOS 26 APIs behind availability checks). Nothing is
 # published; this only says whether the code compiles and the tests pass.
+#
+# A commit is built once: when it reaches main after passing on next (a release fast-
+# forwards main to next), the Mac isn't asked for again. A small Linux job checks first
+# and, if the same commit is still being built on next, waits for that result.
 name: Build
 
 on:
   push:
-    # main: what's released; next: the work for the coming major version.
+    # main: what's released; next: the work for the coming version.
     branches: [main, next]
   pull_request:
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
+  already-built:
+    runs-on: ubuntu-latest
+    outputs:
+      built: ${{ steps.look.outputs.built }}
+    steps:
+      - name: Has this commit passed already?
+        id: look
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          # Only a push can repeat a commit built before (pull requests always build).
+          if [ "$EVENT" != "push" ]; then echo "built=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          # Up to 40 minutes: a release pushes next and main seconds apart.
+          for i in $(seq 1 80); do
+            others=$(gh api "repos/$REPO/actions/workflows/build.yml/runs?head_sha=$SHA&per_page=30" \
+              --jq "[.workflow_runs[] | select(.id != $RUN_ID)]")
+            if echo "$others" | jq -e 'any(.[]; .conclusion == "success")' > /dev/null; then
+              echo "Bu commit başka bir dalda zaten derlenip test edildi; Mac işi atlanıyor."
+              echo "built=true" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            if echo "$others" | jq -e 'any(.[]; .status != "completed")' > /dev/null; then
+              echo "Aynı commit başka bir dalda derleniyor; sonucu bekleniyor ($i)…"
+              sleep 30; continue
+            fi
+            # Never built, or not successfully: build it here.
+            echo "built=false" >> "$GITHUB_OUTPUT"; exit 0
+          done
+          echo "built=false" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: already-built
+    if: needs.already-built.outputs.built != 'true'
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
