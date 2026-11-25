@@ -1,6 +1,8 @@
 # Publishes a GitHub Release when a version tag (v1.2.3) is pushed, with that version's
-# section of CHANGELOG.md as its notes. People who watch the repository for releases get
-# notified, and the app's update check (Settings → Updates) sees the new version.
+# section of CHANGELOG.md as its notes, then builds the app for Apple Silicon and Intel
+# and attaches it as YT-Music.dmg (always that name, so the README's download link and
+# the app's own updater find it). People who watch the repository for releases get
+# notified, and the app's update check sees the new version.
 # Uses only the token GitHub gives each run; no secrets are stored.
 name: Release
 
@@ -32,7 +34,7 @@ jobs:
             found { print }
           ' CHANGELOG.md > notes.md
           if [ ! -s notes.md ]; then echo "CHANGELOG.md has no section for $VERSION" >&2; exit 1; fi
-          printf '\n---\n**Updating:** the app offers new versions in its sidebar (from 2.7.0 on). By hand, in the project folder: `git pull && ./build.sh --install`\n' >> notes.md
+          printf '\n---\n**Install:** download **YT-Music.dmg** below, open it and drag YT Music to Applications. The first time, macOS asks you to allow it in System Settings → Privacy & Security → Open Anyway (the app isn'"'"'t signed by Apple).\n\n**Updating:** the app offers new versions in its sidebar. Built from source? In the project folder: `git pull && ./build.sh --install`\n' >> notes.md
           cat notes.md
 
       - name: Publish the release
@@ -45,3 +47,20 @@ jobs:
           else
             gh release create "$TAG" --verify-tag --title "YT Music ${TAG#v}" --notes-file notes.md
           fi
+
+  dmg:
+    needs: release
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+
+      - name: Build the app for Apple Silicon and Intel, as a disk image
+        run: ./build.sh --package
+
+      - name: Attach it to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: gh release upload "$TAG" dist/YT-Music.dmg --clobber
