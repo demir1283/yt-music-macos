@@ -5,10 +5,10 @@ import Foundation
 ///
 /// Rows, top to bottom (each shown only with plenty in it):
 ///  1. Greeting + 8 tiles: your mixes and what you played lately.
+///  2. Senin için seçildi (ten wide cards, sliding) + Tavsiye edilen istasyonlar: radios
+///     of the 15 artists heard / followed most recently and the 15 listened to longest.
 ///     Senin için bildirimler: the regular uploads of the last two weeks from the music
 ///     channels you follow — artists, labels, festivals — newest first (unread ones marked).
-///  2. Senin için seçildi (one pick at a time, sliding) + Tavsiye edilen istasyonlar: radios
-///     of the 15 artists heard / followed most recently and the 15 listened to longest.
 ///  3. Son çalınanlar.
 ///  4. Hızlı seçimler: a fresh random mix each visit of YouTube Music's picks, songs from
 ///     your saved playlists, what you played lately, worldwide hits and old favourites.
@@ -249,16 +249,27 @@ enum PersonalHome {
                               items: tiles, more: nil, continuation: nil, top: nil))
         }
 
-        // Notifications: right under the tiles, newest first.
-        if let s = shelf("notifications", M.t("Senin için bildirimler", "Notifications for you"), nil, noteItems, limit: 20, minimum: 2) { page.append(s) }
-
-        // 2. One pick at a time + stations.
-        let picks = take(Array(releases.prefix(3)) + Array(editorial.prefix(2)), limit: 5)
+        // 2. One pick at a time + stations, right under the tiles.
+        // Ten: new releases first (seven at most), editors' playlists after them.
+        var picks = take(Array(releases.prefix(7)) + Array(editorial.prefix(10)), limit: 10)
+        // Each pick's card blends its artist's own picture with the cover. A playlist names
+        // no artist of its own: the artist of its first song stands for it.
+        let artistOf = await Self.pickArtists(engine, picks)
+        let pickPhotos = await engine.channelPhotos(Array(artistOf.values))
+        picks = picks.map { p in
+            guard let id = artistOf[p.uid], let photo = pickPhotos[id] else { return p }
+            var p = p
+            p.avatar = photo
+            return p
+        }
         if !picks.isEmpty || stations.count >= 4 {
             page.append(Shelf(id: "home-picks", title: M.t("Tavsiye edilen istasyonlar", "Recommended stations"),
                               strapline: nil, layout: "picks",
                               items: picks + (stations.count >= 4 ? stations : []), more: nil, continuation: nil, top: nil))
         }
+
+        // Notifications: under the picks, newest first.
+        if let s = shelf("notifications", M.t("Senin için bildirimler", "Notifications for you"), nil, noteItems, limit: 20, minimum: 2) { page.append(s) }
         // 3.
         if let s = shelf("recent", M.t("Son çalınanlar", "Recently played"), nil, recentSongs, limit: 20) { page.append(s) }
         // 4. Quick picks: a fresh random mix, every source represented, two songs per artist at most.
@@ -735,6 +746,35 @@ enum PersonalHome {
     private static func isPersonalMix(_ item: MediaItem) -> Bool {
         let id = item.playlistId ?? item.browseId ?? ""
         return id.contains("RDTMAK") || id == "LM" || id == "VLLM"
+    }
+
+    /// The artist whose picture each pick's card shows, by the pick's uid: its own first
+    /// artist, or for a playlist (no artist page of its own) the first song's first artist.
+    private static func pickArtists(_ engine: YTMusic, _ picks: [MediaItem]) async -> [String: String] {
+        var out: [String: String] = [:]
+        var lookups: [(uid: String, browseId: String)] = []
+        for p in picks {
+            if let id = p.artists.first?.id, id.hasPrefix("UC") {
+                out[p.uid] = id
+            } else if let b = p.browseId {
+                lookups.append((p.uid, b))
+            }
+        }
+        let found = await withTaskGroup(of: (String, String?).self) { group in
+            for l in lookups {
+                group.addTask {
+                    let page = try? await engine.browse(l.browseId, params: nil)
+                    let first = page?.sections.flatMap(\.items)
+                        .first { $0.isTrack && $0.artists.first?.id.hasPrefix("UC") == true }
+                    return (l.uid, first?.artists.first?.id)
+                }
+            }
+            var ids: [String: String] = [:]
+            for await (uid, id) in group { if let id { ids[uid] = id } }
+            return ids
+        }
+        out.merge(found) { a, _ in a }
+        return out
     }
 
     /// YouTube Music's editorial playlists ("RDCLAK…").

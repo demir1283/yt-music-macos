@@ -138,9 +138,28 @@ struct PicksRow: View {
     }
 }
 
-/// "Senin için seçildi": a deck of tall cards (the stations' size), the next picks peeking
+/// The size of a "Senin için seçildi" card: as tall as a station card, and wider than tall.
+enum PickDeckSize {
+    static let ratio: CGFloat = 1.75
+    /// How far each card behind shows past the one in front.
+    static let peek: CGFloat = 0.1
+
+    static func card(_ side: CGFloat) -> CGSize {
+        let height = side * StationCard.aspect
+        return CGSize(width: (height * ratio).rounded(), height: height)
+    }
+
+    /// The whole deck: the front card and up to two peeking out behind it.
+    static func width(card side: CGFloat, count: Int) -> CGFloat {
+        let w = card(side).width
+        return w + w * peek * CGFloat(max(0, min(count, 3) - 1))
+    }
+}
+
+/// "Senin için seçildi": a deck of wide cards (the stations' height), the next picks peeking
 /// out behind the front one. Every few seconds the front card steps aside and the next one
-/// comes forward; a card behind comes forward when clicked, the front one opens.
+/// comes forward; a card behind comes forward when clicked, the front one opens. A sideways
+/// two-finger swipe moves one pick on or back.
 private struct FeaturedPick: View {
     let items: [MediaItem]
     @Environment(AppModel.self) private var app
@@ -149,9 +168,8 @@ private struct FeaturedPick: View {
     @ViewState var hover = false
 
     private static let interval: UInt64 = 8_000_000_000
-    /// How far each card behind shows past the one in front, and how much smaller it is.
-    private static let peek: CGFloat = 0.2
-    private static let shrink: CGFloat = 0.09
+    /// How much smaller each card behind is.
+    private static let shrink: CGFloat = 0.08
 
     private struct Slot: Identifiable {
         let depth: Int
@@ -160,33 +178,32 @@ private struct FeaturedPick: View {
     }
 
     static func width(card: CGFloat, count: Int) -> CGFloat {
-        card + card * peek * CGFloat(max(0, min(count, 3) - 1))
+        PickDeckSize.width(card: card, count: count)
     }
 
     var body: some View {
         let activity = AppActivity.shared
         let running = items.count > 1 && !hover && activity.isActive && activity.isVisible
         let current = items.isEmpty ? 0 : index % items.count
-        let side = d.card
-        let height = side * StationCard.aspect
+        let size = PickDeckSize.card(d.card)
         let slots = (0..<min(3, items.count)).map { Slot(depth: $0, item: items[(current + $0) % items.count]) }
         VStack(spacing: 6) {
             ZStack(alignment: .leading) {
                 ForEach(slots) { slot in
-                    DeckCard(item: slot.item, side: side, height: height, depth: slot.depth,
+                    DeckCard(item: slot.item, width: size.width, height: size.height, depth: slot.depth,
                              showsPlay: hover && slot.depth == 0)
                         .scaleEffect(1 - CGFloat(slot.depth) * Self.shrink, anchor: .trailing)
-                        .offset(x: CGFloat(slot.depth) * side * Self.peek)
+                        .offset(x: CGFloat(slot.depth) * size.width * PickDeckSize.peek)
                         .zIndex(Double(10 - slot.depth))
                         .transition(.asymmetric(insertion: .opacity,
-                                                removal: .opacity.combined(with: .offset(x: -side * 0.35))))
+                                                removal: .opacity.combined(with: .offset(x: -size.width * 0.25))))
                         .onTapGesture {
                             if slot.depth == 0 { app.open(slot.item) } else { bringForward(slot.item) }
                         }
                         .contextMenu { ItemMenu(item: slot.item) }
                 }
             }
-            .frame(width: Self.width(card: side, count: items.count), height: height, alignment: .leading)
+            .frame(width: Self.width(card: d.card, count: items.count), height: size.height, alignment: .leading)
             // The dots sit in their own row under the deck; each one brings its pick forward.
             if items.count > 1 {
                 HStack(spacing: 0) {
@@ -207,6 +224,11 @@ private struct FeaturedPick: View {
             }
         }
         .scrollAwareHover($hover)
+        .onHorizontalSwipe { delta in
+            guard items.count > 1 else { return }
+            let n = items.count
+            withAnimation(Self.step) { index = ((index % n) + delta + n) % n }
+        }
         .task(id: running) {
             guard running else { return }
             while !Task.isCancelled {
@@ -225,11 +247,14 @@ private struct FeaturedPick: View {
     }
 }
 
-/// One card of the deck: the cover filling it, the title and artists over its lower part,
-/// a "YENİ ÇIKAN" / "EDİTÖR SEÇİMİ" tag. Cards further back are dimmed.
+/// One card of the deck, wider than tall. The cover, blurred, colours the whole card; the
+/// artist's own picture fills the left and melts into that colour; the cover itself floats
+/// sharp over the seam. The title and artists sit at the lower left, a "YENİ ÇIKAN" /
+/// "EDİTÖR SEÇİMİ" tag at the top. Without the artist's picture (an editors' playlist) the
+/// cover's colour fills the left too. Cards further back are dimmed.
 private struct DeckCard: View {
     let item: MediaItem
-    let side: CGFloat
+    let width: CGFloat
     let height: CGFloat
     let depth: Int
     let showsPlay: Bool
@@ -238,35 +263,61 @@ private struct DeckCard: View {
 
     var body: some View {
         let official = PersonalHome.isOfficial(item)
-        ZStack(alignment: .bottomLeading) {
-            Color.black.opacity(0.35)
+        let cover = (height * 0.56).rounded()
+        // The cover's centre: right of the middle, so it overlaps where the picture fades.
+        let coverX = width * 0.71
+        ZStack(alignment: .topLeading) {
+            // The cover's colours, as a soft field behind everything.
+            Color.black
             Artwork(url: item.thumbnail, cornerRadius: 0)
-                .frame(width: side, height: height)
-            LinearGradient(stops: [
-                .init(color: .clear, location: 0.42),
-                .init(color: .black.opacity(0.82), location: 1),
-            ], startPoint: .top, endPoint: .bottom)
-            .allowsHitTesting(false)
+                .frame(width: width, height: height)
+                .scaleEffect(1.35)
+                .blur(radius: 26)
+                .opacity(0.9)
+            Color.black.opacity(0.18)
 
+            if let photo = item.avatar {
+                Artwork(url: photo, cornerRadius: 0, placeholder: "person.fill")
+                    .frame(width: width * 0.62, height: height)
+                    .mask(LinearGradient(stops: [
+                        .init(color: .black, location: 0),
+                        .init(color: .black, location: 0.5),
+                        .init(color: .clear, location: 1),
+                    ], startPoint: .leading, endPoint: .trailing))
+            }
+
+            // Under the text, so the name reads on any picture.
+            LinearGradient(stops: [
+                .init(color: .clear, location: 0.4),
+                .init(color: .black.opacity(0.72), location: 1),
+            ], startPoint: .top, endPoint: .bottom)
+
+            Artwork(url: item.thumbnail, cornerRadius: 8)
+                .frame(width: cover, height: cover)
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(.white.opacity(0.14), lineWidth: 0.5))
+                .shadow(color: .black.opacity(0.45), radius: 14, y: 6)
+                .position(x: coverX, y: height * 0.4)
+
+            // Under the cover, across the card (short of the play button).
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.title)
-                    .font(.system(size: side * 0.1, weight: .heavy))
+                    .font(.system(size: height * 0.085, weight: .heavy))
                     .foregroundStyle(.white)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.7)
-                    .shadow(color: .black.opacity(0.35), radius: 6, y: 2)
-                Text(item.bylineText)
-                    .font(.system(size: 11.5, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.8))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .shadow(color: .black.opacity(0.4), radius: 6, y: 2)
+                // Each artist opens their page (the card itself opens the release).
+                ArtistByline(artists: item.artists, fallback: item.bylineText,
+                             font: .system(size: 11.5, weight: .medium), color: .white.opacity(0.82))
             }
             .padding(12)
-            .padding(.trailing, 36)
+            .frame(width: width - 40, alignment: .leading)
+            .frame(maxHeight: .infinity, alignment: .bottomLeading)
 
             CardTag(title: official ? M.t("EDİTÖR SEÇİMİ", "EDITORS' PICK") : M.t("YENİ ÇIKAN", "NEW"),
                     systemImage: official ? "star" : "sparkles")
                 .padding(10)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             if showsPlay {
                 PlayCircle(size: 32) { app.play(item) }
@@ -278,7 +329,7 @@ private struct DeckCard: View {
                 Color.black.opacity(0.2 * Double(depth)).allowsHitTesting(false)
             }
         }
-        .frame(width: side, height: height)
+        .frame(width: width, height: height)
         .clipShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
             .strokeBorder(.white.opacity(0.08), lineWidth: 0.5))
@@ -360,7 +411,7 @@ private struct StationsCarousel: View {
 
 /// An artist's radio: a tall card filled by the artist's photo, washed into the artist's
 /// colour towards the bottom, with the name over it and a small "RADYO" tag.
-private struct StationCard: View {
+struct StationCard: View {
     let item: MediaItem
     /// The card's width; it is `aspect` times as tall.
     let side: CGFloat

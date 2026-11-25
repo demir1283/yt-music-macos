@@ -294,3 +294,57 @@ final class LibraryTests: XCTestCase {
         XCTAssertEqual(TimeColumn([bare]), .hidden)
     }
 }
+
+final class InboxOrderTests: XCTestCase {
+    private func item(_ id: String) -> MediaItem {
+        MediaItem(uid: id, kind: "video", title: id, subtitle: "", thumbnail: nil, videoId: id, browseId: nil,
+                  params: nil, playlistId: nil, artists: [], album: nil, duration: nil, explicit: false,
+                  play: nil, wide: true, color: nil)
+    }
+
+    func testNewestComesFirstAndTheUndatedLast() {
+        let now = Date()
+        let items = ["old", "undatedA", "new", "middle", "undatedB"].map(item)
+        let dates = ["old": now.addingTimeInterval(-5 * 86_400), "new": now.addingTimeInterval(-3_600),
+                     "middle": now.addingTimeInterval(-86_400)]
+        XCTAssertEqual(Inbox.newestFirst(items, dates: dates).map(\.uid), ["new", "middle", "old", "undatedA", "undatedB"])
+    }
+
+    func testAPublishDateIsReadAsThatDay() {
+        let c = Calendar.current
+        for text in ["2026-11-20", "2026-11-20T00:00:00-08:00"] {
+            let d = Inbox.day(text)
+            XCTAssertNotNil(d)
+            XCTAssertEqual(d.map { c.component(.day, from: $0) }, 20)
+            XCTAssertEqual(d.map { c.component(.month, from: $0) }, 11)
+        }
+        XCTAssertNil(Inbox.day("dün"))
+    }
+}
+
+final class ArtistCreditTests: XCTestCase {
+    private func parts(_ text: String, _ refs: [(String, String)]) -> [String] {
+        ArtistCredit.segments(text, refs.map { ArtistRef(name: $0.0, id: $0.1) })
+            .map { $0.artist.map { "[\($0.id)]" } ?? $0.text }
+    }
+
+    func testEachArtistLinksApart() {
+        XCTAssertEqual(parts("Miss Monique & Paradoks", [("Miss Monique", "UC1"), ("Paradoks", "UC2")]),
+                       ["[UC1]", " & ", "[UC2]"])
+    }
+
+    func testAWholeLinkIsSplitByTheSongsCredits() {
+        // YouTube linked "A & B" to A only; the songs name both.
+        XCTAssertEqual(parts("Miss Monique & Paradoks", [("Miss Monique & Paradoks", "UC1"),
+                                                         ("Miss Monique", "UC1"), ("Paradoks", "UC2")]),
+                       ["[UC1]", " & ", "[UC2]"])
+    }
+
+    func testANameInsideAnotherNameStaysWhole() {
+        XCTAssertEqual(parts("Katy Perry", [("Katy Perry", "UC1"), ("Kat", "UC2")]), ["[UC1]"])
+    }
+
+    func testTextWithoutKnownNamesIsPlain() {
+        XCTAssertEqual(parts("Various Artists", [("Someone", "UC1")]), ["Various Artists"])
+    }
+}

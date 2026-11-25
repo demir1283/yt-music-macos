@@ -183,8 +183,11 @@ struct CollectionView: View {
                     .font(.system(size: d.headerTitle, weight: .bold))
                     .lineLimit(2)
                 if let h = page?.header, !h.strapline.isEmpty {
-                    if let a = h.artists.first {
-                        HoverLink(h.strapline, font: .system(size: d.headerStrap, weight: .medium), color: .brand) { app.openArtist(a.id) }
+                    if !h.artists.isEmpty {
+                        // Each artist links to their own page; the songs' credits name the
+                        // ones YouTube joined into a single link.
+                        CreditLine(text: h.strapline, artists: h.artists + tracks.flatMap(\.artists),
+                                   font: .system(size: d.headerStrap, weight: .medium), color: .brand)
                     } else {
                         Text(h.strapline).font(.system(size: d.headerStrap, weight: .medium)).foregroundStyle(Color.brand)
                     }

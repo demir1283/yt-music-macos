@@ -10,12 +10,30 @@ struct NowPlayingHeader: View {
     /// Width available inside the panel; the cover never exceeds it.
     let width: CGFloat
     @Environment(AppModel.self) private var app
-    @ViewState var aspect: CGFloat = 1
-    /// Full-frame 16:9 thumbnail for videos (falls back to the player's artwork).
-    @ViewState var videoArt: String? = nil
+    /// A cover's measured shape, for the cover it was measured on.
+    @ViewState var measured: (url: String, aspect: CGFloat)? = nil
+    /// Full-frame 16:9 thumbnail for a video, for the video it belongs to.
+    @ViewState var frame: (videoId: String, url: String)? = nil
 
     private var isVideo: Bool {
         app.engine.hasVideo || (track.artwork?.contains("ytimg.com") ?? false)
+    }
+
+    /// Known before any picture arrives, so the cover takes its shape at once (at launch,
+    /// nothing is in memory yet): a video is 16:9 — its frames are cut to that — a song is
+    /// square until its own cover says otherwise. A shape measured on another cover is never
+    /// borrowed.
+    private var aspect: CGFloat {
+        if isVideo { return 16.0 / 9.0 }
+        if let m = measured, m.url == track.artwork { return m.aspect }
+        return 1
+    }
+
+    /// The video's own frame once found; until then the player's artwork (its 4:3 black
+    /// bars fall outside the 16:9 crop). Never the previous video's frame.
+    private var picture: String? {
+        if isVideo, let f = frame, f.videoId == track.videoId { return f.url }
+        return track.artwork
     }
 
     var body: some View {
@@ -26,7 +44,7 @@ struct NowPlayingHeader: View {
         let albumId = e.currentAlbumId
 
         VStack(alignment: .leading, spacing: 14) {
-            RemoteImage(url: videoArt ?? track.artwork)
+            RemoteImage(url: picture)
                 .frame(width: artW, height: artH)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -55,27 +73,26 @@ struct NowPlayingHeader: View {
         .clipped()
         .task(id: "\(track.videoId)|\(track.artwork ?? "")|\(isVideo)") {
             if isVideo {
-                // maxresdefault is the real 16:9 frame (what YouTube shows as the preview).
-                let ids = track.videoId
+                // maxresdefault is the real 16:9 frame (what YouTube shows as the preview);
+                // sd/hq are 4:3 with black bars, which the 16:9 crop removes.
+                let id = track.videoId
+                guard frame?.videoId != id else { return }
                 for name in ["maxresdefault", "sddefault", "hqdefault"] {
-                    let u = "https://i.ytimg.com/vi/\(ids)/\(name).jpg"
+                    let u = "https://i.ytimg.com/vi/\(id)/\(name).jpg"
                     if let img = await ImageLoader.shared.load(u), img.size.height > 0 {
                         guard !Task.isCancelled else { return }
-                        let r = img.size.width / img.size.height
-                        // sd/hq are 4:3 with black bars: a 16:9 crop removes just the bars.
-                        aspect = r < 1.5 ? 16.0 / 9.0 : r
-                        videoArt = u
+                        frame = (id, u)
                         return
                     }
                 }
+                return
             }
-            guard !Task.isCancelled else { return }
-            videoArt = nil
-            if let u = track.artwork, let img = await ImageLoader.shared.load(u), img.size.height > 0 {
-                aspect = img.size.width / img.size.height
-            } else {
-                aspect = 1
-            }
+            guard let u = track.artwork, measured?.url != u,
+                  let img = await ImageLoader.shared.load(u), img.size.height > 0,
+                  !Task.isCancelled else { return }
+            let r = img.size.width / img.size.height
+            // A cover that is nearly square is shown square.
+            measured = (u, abs(r - 1) < 0.05 ? 1 : r)
         }
     }
 }

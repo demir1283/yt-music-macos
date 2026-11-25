@@ -6,8 +6,9 @@ struct Sidebar: View {
     var body: some View {
         let engine = app.engine
         List {
+            // No "Ara" row: the search field at the top (⌘F) opens search, and its empty page
+            // was the same as Ruh Hali ve Türler.
             Section {
-                row(.search)
                 row(.home)
             }
 

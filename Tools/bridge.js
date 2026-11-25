@@ -624,7 +624,8 @@
     const m = String(t || '').toLowerCase()
       .match(/(\d+)\s*(saniye|dakika|saat|gün|hafta|ay|yıl|second|minute|hour|day|week|month|year)/);
     if (!m) return null;
-    const unit = { saniye: 0, dakika: 0, saat: 0, second: 0, minute: 0, hour: 0, 'gün': 1, day: 1,
+    // In days, hours and minutes included, so uploads of the same day still come in order.
+    const unit = { saniye: 1 / 86400, dakika: 1 / 1440, saat: 1 / 24, second: 1 / 86400, minute: 1 / 1440, hour: 1 / 24, 'gün': 1, day: 1,
       hafta: 7, week: 7, ay: 30, month: 30, 'yıl': 365, year: 365 }[m[2]];
     return unit == null ? null : +m[1] * unit;
   }
@@ -935,6 +936,15 @@
 
     // A video's channel and YouTube category (one request): tells music channels (artists,
     // labels, festivals) from the rest.
+    // The day a release came out: its first song's publish date on YouTube ("2026-11-20").
+    async releaseDate({ browseId }) {
+      const first = collectItems(await api('browse', { browseId })).find((i) => i.videoId);
+      if (!first) return null;
+      const r = await webApi('player', { videoId: first.videoId });
+      const m = r.microformat?.playerMicroformatRenderer || {};
+      return m.publishDate || m.uploadDate || null;
+    },
+
     async ytVideoInfo({ videoId }) {
       const r = await webApi('player', { videoId });
       const d = r.videoDetails || {};

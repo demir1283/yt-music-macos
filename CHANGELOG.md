@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **Picked for you, in wide cards.** The deck still slides from pick to pick, now with cards wider than tall: the cover, blurred, colours the card, the artist's own picture fills its left and melts into that colour, and the cover floats sharp over the seam. The name and artists use the card's width. Ten picks instead of five, and a sideways two-finger swipe on the trackpad moves to the next or the previous one.
+- **Home: the picks above the notifications.** Senin için seçildi and the stations now come right under the greeting, the notifications after them; the loading placeholders follow the new order and sizes. A playlist's pick shows the picture of its first song's artist.
+- **The player bar on a laptop screen.** When the bar is too narrow to keep the cover and title in the middle without cutting the title short, they move left, next to the play buttons, and take the room that was empty there. Wide windows keep the centred layout.
+- **Fixed: the same old song at every launch.** The player bar was given the top of the account's YouTube history whenever it differed from what the app played last — and that top often lags behind (a play reaches it late, or not at all), so one old song kept coming back. Now the song this Mac played last comes back, where it was left; the history takes over only when it is plainly newer: something played today, on another device, while this Mac last played on an earlier day.
+- **Fixed: "Up Next" could run dry.** Picking a song near the end of the list from Up Next left nothing after it, and nothing new came: more was asked for only when the list had a next page. Now the next page comes first and, when there is none (or it brings nothing new), the song's radio follows, as at the end of any list. A next page made only of songs already listed no longer stops it either.
+- Picked for you: the artists' names on a card open their pages.
+- **Fixed: album and single pages linked all their artists as one.** "Miss Monique & Paradoks" was a single link to the first artist; now each name opens its own page and the "&" between them is plain. When YouTube joins several names into one link, the songs' credits tell them apart.
+- **Notifications newest first.** The bell's list mixed YouTube Music's new releases (on top, in their page's order) with uploads; now everything is in one order by date. An upload goes by when it went up — hours count too, not just days; a release by the day it came out (its first song's publish date, looked up once and kept on this Mac), or, when YouTube doesn't say, by when the bell first listed it.
+- **No "Search" in the sidebar.** Its page, before typing anything, was the same as Moods & Genres. Search is the field at the top of the window (⌘F), as before.
+- **Fixed: a video's preview in the side panel started square.** At launch it took its 16:9 shape only once the picture had downloaded. A video is now 16:9 from the start and a song square; moving from one video to the next no longer shows the previous video's frame for a moment, and a song after a video no longer appears wide first.
+
 ## 3.2.0 — 2026-11-24
 
 Install from a disk image, a new Library, and song lengths on artist pages.

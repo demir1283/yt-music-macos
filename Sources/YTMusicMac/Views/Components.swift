@@ -158,6 +158,61 @@ struct ArtistByline: View {
     }
 }
 
+/// A credit line ("Miss Monique & Paradoks") with each artist's name a link to their page
+/// and the words between them plain.
+struct CreditLine: View {
+    let text: String
+    let artists: [ArtistRef]
+    var font: Font = .system(size: 13)
+    var color: Color = .secondary
+    @Environment(AppModel.self) private var app
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(ArtistCredit.segments(text, artists).enumerated()), id: \.offset) { _, part in
+                if let a = part.artist {
+                    HoverLink(part.text, font: font, color: color) { app.openArtist(a.id) }
+                } else {
+                    Text(part.text).font(font).foregroundStyle(color)
+                }
+            }
+        }
+        .lineLimit(1)
+    }
+}
+
+enum ArtistCredit {
+    /// `text` cut into the artists' names (links) and what lies between them (plain).
+    /// YouTube sometimes links a whole "A & B" to A alone: a name made of other known names
+    /// joined by "&", ",", "x", "ve", "and", "feat." is set aside, so A and B link apart.
+    static func segments(_ text: String, _ artists: [ArtistRef]) -> [(text: String, artist: ArtistRef?)] {
+        let joiners = [" & ", ", ", " x ", " X ", " ve ", " and ", " feat. ", " ft. "]
+        var known: [ArtistRef] = []
+        for a in artists where !a.name.isEmpty && !known.contains(where: { $0.name == a.name }) { known.append(a) }
+        let names = known.filter { a in
+            let joined = joiners.contains { a.name.contains($0) }
+            let others = known.filter { $0.name != a.name && a.name.contains($0.name) }
+            return !(joined && !others.isEmpty)
+        }.sorted { $0.name.count > $1.name.count }
+
+        var out: [(text: String, artist: ArtistRef?)] = []
+        var plain = ""
+        var i = text.startIndex
+        while i < text.endIndex {
+            if let a = names.first(where: { text[i...].hasPrefix($0.name) }) {
+                if !plain.isEmpty { out.append((plain, nil)); plain = "" }
+                out.append((a.name, a))
+                i = text.index(i, offsetBy: a.name.count)
+            } else {
+                plain.append(text[i])
+                i = text.index(after: i)
+            }
+        }
+        if !plain.isEmpty { out.append((plain, nil)) }
+        return out
+    }
+}
+
 struct ExplicitBadge: View {
     var body: some View {
         Text("E")

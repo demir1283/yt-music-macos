@@ -2,7 +2,8 @@ import Foundation
 import Observation
 
 /// The bell at the top right: the latest music from the channels and artists you follow,
-/// newest first.
+/// newest first: an upload by when it went up, a release by the day it came out (its first
+/// song's publish date, looked up once and kept), or else by when the bell first listed it.
 ///
 /// - From YouTube: the regular uploads of the last two weeks from the music channels you
 ///   follow (the home page's "Senin için bildirimler", PersonalHome.notificationItems): no
@@ -113,9 +114,15 @@ final class Inbox {
             newReleases.append(r)
         }
 
+        var ages: [String: Double] = [:]
+        for u in uploads { if let v = u.item.videoId, let a = u.ageDays, ages[v] == nil { ages[v] = a } }
+        let now = Date()
+        var dates: [String: Date] = [:]
+
         var used = Set<String>()
         let fromUploads = videos.prefix(40).compactMap { v -> MediaItem? in
             var item = v
+            let uploaded = v.videoId.flatMap { ages[$0] }.map { now.addingTimeInterval(-$0 * 86_400) }
             if let channel = v.artists.first?.id,
                let release = releases.first(where: { r in
                    r.artists.contains { $0.id == channel } && PersonalHome.sameTitle(r.title, v.title)
@@ -127,7 +134,9 @@ final class Inbox {
                 item.unread = v.unread
                 item.wide = false
             }
-            return used.insert(item.uid).inserted ? item : nil
+            guard used.insert(item.uid).inserted else { return nil }
+            if let uploaded { dates[item.uid] = uploaded }
+            return item
         }
         // A release already shown for its upload isn't listed twice.
         let shown = Set(fromUploads.map(\.recommendationKey))
@@ -135,8 +144,70 @@ final class Inbox {
             !shown.contains(r.recommendationKey)
                 && !fromUploads.contains { PersonalHome.sameTitle(r.title, $0.title) && $0.artists.first?.id == r.artists.first?.id }
         }
-        EngineLog.write("Bildirim zili: YouTube Music'te yeni \(releasesOnly.count), yükleme \(fromUploads.count)")
-        return releasesOnly + fromUploads
+        let released = await releaseDays(engine, releasesOnly)
+        for r in releasesOnly { dates[r.uid] = released[r.recommendationKey] }
+        EngineLog.write("Bildirim zili: YouTube Music'te yeni \(releasesOnly.count) (\(released.count) tarihli), yükleme \(fromUploads.count)")
+        return Self.newestFirst(releasesOnly + fromUploads, dates: dates)
+    }
+
+    /// Newest first; what has no date keeps its place among the undated, after the dated.
+    nonisolated static func newestFirst(_ items: [MediaItem], dates: [String: Date]) -> [MediaItem] {
+        items.enumerated().sorted { a, b in
+            switch (dates[a.element.uid], dates[b.element.uid]) {
+            case let (x?, y?) where x != y: return x > y
+            case (_?, nil): return true
+            case (nil, _?): return false
+            default: return a.offset < b.offset
+            }
+        }.map(\.element)
+    }
+
+    private static let releaseDatesKey = "inboxReleaseDates"
+    private static let firstListedKey = "inboxFirstListed"
+
+    /// The day each release came out, looked up once and kept on this Mac. A release whose
+    /// day YouTube doesn't give is dated by when the bell first listed it.
+    private static func releaseDays(_ engine: YTMusic, _ releases: [MediaItem]) async -> [String: Date] {
+        let defaults = UserDefaults.standard
+        var known = defaults.dictionary(forKey: releaseDatesKey) as? [String: Double] ?? [:]
+        var listed = defaults.dictionary(forKey: firstListedKey) as? [String: Double] ?? [:]
+        let missing = releases.filter { known[$0.recommendationKey] == nil && $0.browseId?.hasPrefix("MPRE") == true }
+        let found = await withTaskGroup(of: (String, Date?).self) { group in
+            for r in missing.prefix(20) {
+                let key = r.recommendationKey, id = r.browseId ?? ""
+                group.addTask { (key, await engine.releaseDate(id)) }
+            }
+            var out: [String: Date] = [:]
+            for await (key, day) in group { if let day { out[key] = day } }
+            return out
+        }
+        for (key, day) in found { known[key] = day.timeIntervalSince1970 }
+        let now = Date().timeIntervalSince1970
+        var out: [String: Date] = [:]
+        for r in releases {
+            let key = r.recommendationKey
+            if let t = known[key] {
+                // Noon of a day not over yet isn't later than now.
+                out[key] = min(Date(timeIntervalSince1970: t), Date())
+            } else {
+                if listed[key] == nil { listed[key] = now }
+                out[key] = Date(timeIntervalSince1970: listed[key] ?? now)
+            }
+        }
+        // Kept: the newest 300 of each.
+        func trimmed(_ d: [String: Double]) -> [String: Double] {
+            Dictionary(uniqueKeysWithValues: d.sorted { $0.value > $1.value }.prefix(300).map { ($0.key, $0.value) })
+        }
+        defaults.set(trimmed(known), forKey: releaseDatesKey)
+        defaults.set(trimmed(listed), forKey: firstListedKey)
+        return out
+    }
+
+    /// "2026-11-20" (or "2026-11-20T00:00:00-08:00"): that day, at noon here.
+    nonisolated static func day(_ text: String) -> Date? {
+        let parts = text.prefix(10).split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        return Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2], hour: 12))
     }
 
     /// "Single", "EP", "Albüm": the kind written in a release's subtitle.

@@ -249,6 +249,8 @@ final class YTMusic {
         var index: Int
         var position: Double
         var continuation: String?
+        /// When it was saved (absent in sessions saved before 3.2.1).
+        var savedAt: Date? = nil
     }
 
     private static let sessionKey = "lastSong"
@@ -257,7 +259,7 @@ final class YTMusic {
         guard items.indices.contains(queueIndex) else { return }
         lastSessionSave = Date()
         let s = SavedSession(items: [items[queueIndex]], index: 0,
-                             position: resumeAt ?? position(at: Date()), continuation: nil)
+                             position: resumeAt ?? position(at: Date()), continuation: nil, savedAt: Date())
         if let d = try? JSONEncoder().encode(s) { UserDefaults.standard.set(d, forKey: Self.sessionKey) }
     }
 
@@ -270,21 +272,39 @@ final class YTMusic {
         saveSession()
     }
 
-    /// Puts the last played song in the player bar and side panel, paused. The account's
-    /// YouTube Music history decides which song (so a song played on another device
-    /// counts too); if it is the one this app played last, its position and queue are kept.
+    /// Puts the last played song in the player bar and side panel, paused: the one this app
+    /// played last, where it was left, with its queue. The account's YouTube Music history
+    /// takes its place only when it is plainly newer — something played today (on another
+    /// device) while this app last played on an earlier day. The history alone used to
+    /// decide, and since its top often lags behind (a play reaches it late, or not at all),
+    /// the same old song kept coming back.
     private func restoreLastSession() async {
         guard track == nil else { return }
         let saved = UserDefaults.standard.data(forKey: Self.sessionKey)
             .flatMap { try? JSONDecoder().decode(SavedSession.self, from: $0) }
         var latest: MediaItem?
+        var latestToday = false
         if loggedIn, let page = try? await call("browse", ["browseId": "FEmusic_history"], as: BrowsePage.self) {
-            latest = page.sections.flatMap(\.items).first { $0.isTrack }
+            if let section = page.sections.first(where: { $0.items.contains(where: \.isTrack) }) {
+                latest = section.items.first { $0.isTrack }
+                latestToday = ["bugün", "today"].contains(section.title.lowercased(with: Locale(identifier: "tr_TR")))
+            }
         }
         guard track == nil else { return }   // something was started meanwhile
 
-        if let s = saved, s.items.indices.contains(s.index),
-           latest == nil || s.items[s.index].videoId == latest?.videoId {
+        let savedSong = saved.flatMap { s in s.items.indices.contains(s.index) ? s.items[s.index] : nil }
+        let historyIsNewer: Bool = {
+            guard let latest, latest.videoId != savedSong?.videoId else { return false }
+            guard savedSong != nil else { return true }
+            guard latestToday, let at = saved?.savedAt else { return false }
+            return at < Calendar.current.startOfDay(for: Date())
+        }()
+        if let latest, savedSong != nil, latest.videoId != savedSong?.videoId {
+            EngineLog.write("Son oturum: bu Mac'te \(savedSong?.title ?? "?"), geçmişte \(latest.title)\(latestToday ? " (bugün)" : "")"
+                            + " → \(historyIsNewer ? "geçmiş" : "bu Mac")")
+        }
+
+        if let s = saved, s.items.indices.contains(s.index), !historyIsNewer {
             let e = s.items[s.index]
             // Rebuild the queue for that song (its list/radio), keep the saved position. If
             // the saved list no longer contains the song, fall back to the song's radio.
@@ -345,13 +365,18 @@ final class YTMusic {
         Task { await ensureUpcoming() }
     }
 
-    /// When nothing follows the current song and there is no continuation, continue with
-    /// that song's radio, as YouTube Music does. Retries with a growing pause, since right
-    /// after launch the connection may still be coming up.
+    /// When nothing follows the current song — the list ran out, or a song near its end was
+    /// picked from "Sıradaki" — the list's next page comes first; when there is none (or it
+    /// brings nothing new), the song's radio follows, as YouTube Music does. Retries with a
+    /// growing pause, since right after launch the connection may still be coming up.
     private func ensureUpcoming() async {
+        if queueContinuation != nil, items.indices.contains(queueIndex), queueIndex == items.count - 1 {
+            await loadMoreQueue()
+        }
         for attempt in 0..<4 {
-            guard items.indices.contains(queueIndex), queueIndex == items.count - 1,
-                  queueContinuation == nil, let vid = items[queueIndex].videoId else { return }
+            // "Tümünü tekrarla" starts the list over instead.
+            guard repeatMode != "ALL", items.indices.contains(queueIndex), queueIndex == items.count - 1,
+                  let vid = items[queueIndex].videoId else { return }
             if attempt > 0 { try? await Task.sleep(nanoseconds: UInt64(attempt) * 2_000_000_000) }
             guard let q = try? await call("watchQueue", ["endpoint": Self.watchJSON(vid), "context": ""],
                                           as: WatchQueue.self) else { continue }
@@ -612,7 +637,12 @@ final class YTMusic {
     }
 
     private func afterStart(_ videoId: String) {
-        if queueIndex >= items.count - 3 { Task { await loadMoreQueue() } }
+        if queueIndex >= items.count - 3 {
+            Task {
+                await loadMoreQueue()
+                await ensureUpcoming()
+            }
+        }
         // Resolve the next track's address now, and once this one has played a few seconds
         // (not while skipping through) load the next one's first 10 seconds, so the change
         // to it is immediate. Nothing is written to disk.
@@ -629,19 +659,26 @@ final class YTMusic {
         // The play is reported to the account's history from noteListen, once heard.
     }
 
+    /// The list's next page. A page whose songs were all there already (or left out) is
+    /// followed by the next one, three pages at most.
     private func loadMoreQueue() async {
-        guard let token = queueContinuation, !loadingMore else { return }
+        guard !loadingMore else { return }
         loadingMore = true
         defer { loadingMore = false }
-        guard let more = try? await call("queueMore", ["token": token], as: WatchQueue.self) else {
-            queueContinuation = nil
-            return
+        for _ in 0..<3 {
+            guard let token = queueContinuation else { return }
+            guard let more = try? await call("queueMore", ["token": token], as: WatchQueue.self) else {
+                queueContinuation = nil
+                return
+            }
+            // The queue may have been replaced while this was loading.
+            guard queueContinuation == token else { return }
+            let before = items.count
+            appendUpcoming(more.items)
+            queueContinuation = more.items.isEmpty || more.continuation == token ? nil : more.continuation
+            publishQueue()
+            if items.count > before { return }
         }
-        // The queue may have been replaced while this was loading.
-        guard queueContinuation == token else { return }
-        appendUpcoming(more.items)
-        queueContinuation = more.items.isEmpty ? nil : more.continuation
-        publishQueue()
     }
 
     private func publishQueue() {
@@ -1536,6 +1573,12 @@ final class YTMusic {
     /// A video's channel and category (one request).
     func youtubeVideoInfo(_ videoId: String) async -> YouTubeVideoInfo? {
         try? await call("ytVideoInfo", ["videoId": videoId])
+    }
+
+    /// The day an album or single came out (its first song's publish date), if YouTube says.
+    func releaseDate(_ browseId: String) async -> Date? {
+        guard let text = (try? await call("releaseDate", ["browseId": browseId], as: String?.self)) ?? nil else { return nil }
+        return Inbox.day(text)
     }
 
     /// Regular YouTube search (`long`: only videos over 20 minutes).

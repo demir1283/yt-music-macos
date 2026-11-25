@@ -23,17 +23,24 @@ struct PlayerBar: View {
             // the block the cover is as tall as the text column and the times sit at its
             // right end; the song's progress runs along the bottom edge of the capsule.
             let side: CGFloat = max(compact ? 110 : 240, trailingWidth)
+            // When centring would leave the now-playing block too little room (a laptop's
+            // own screen: the left column, as wide as the right one, is mostly empty), the
+            // block moves left, next to the transport buttons, and takes that room instead.
+            let centred = geo.size.width - 32 - 24 - 2 * side
+            let besideTransport = centred < Self.roomyCentre
             HStack(spacing: 12) {
                 TransportControls(compact: compact)
-                    .frame(width: side, alignment: .leading)
+                    .fixedSize()
+                    .frame(width: besideTransport ? nil : side, alignment: .leading)
                 NowPlayingCenter(artSide: d.playerBar - 14, scrub: scrub)
-                    .frame(maxWidth: .infinity)
+                    .padding(.leading, besideTransport ? 6 : 0)
+                    .frame(maxWidth: .infinity, alignment: besideTransport ? .leading : .center)
                 TrailingControls(compact: compact, slider: slider)
                     .fixedSize()
                     .background(GeometryReader { g in
                         Color.clear.preference(key: TrailingWidthKey.self, value: g.size.width)
                     })
-                    .frame(width: side, alignment: .trailing)
+                    .frame(width: besideTransport ? nil : side, alignment: .trailing)
             }
             .onPreferenceChange(TrailingWidthKey.self) { trailingWidth = $0 }
             .padding(.horizontal, 16)
@@ -54,6 +61,10 @@ struct PlayerBar: View {
         }
         .frame(height: d.playerBar)
     }
+
+    /// Below this, the centred now-playing block cuts titles short (cover, a readable title
+    /// and the times).
+    private static let roomyCentre: CGFloat = 420
 }
 
 private struct TrailingWidthKey: PreferenceKey {

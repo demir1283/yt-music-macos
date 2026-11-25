@@ -8,8 +8,9 @@ import SwiftUI
 /// shapes, so nothing jumps. The shapes are still (no shimmer: an endless animation keeps
 /// the CPU busy for as long as it is visible) and fade in only if loading takes a moment.
 enum SkeletonLayout: Equatable {
-    /// Home: filter chips (unless already shown), the greeting with eight tiles, the pick
-    /// beside the station cards, a cover shelf, quick picks, another cover shelf.
+    /// Home: filter chips (unless already shown), the greeting with eight tiles, the picks'
+    /// deck beside the station cards, the notifications' wide cards, a cover shelf, quick
+    /// picks, another cover shelf.
     case home(chips: Bool)
     /// A page made of cover shelves (explore, new releases, podcasts, mood categories).
     case shelves
@@ -58,7 +59,8 @@ struct PageSkeleton: View {
                 if chips { SkelChips() }
                 SkelShortcutGrid()
                 SkelPicksRow()
-                SkelCardShelf()
+                SkelCardShelf(wide: true)   // Senin için bildirimler
+                SkelCardShelf()             // Son çalınanlar
                 SkelSongGrid()
                 SkelCardShelf()
             }
@@ -227,36 +229,25 @@ private struct SkelPicksRow: View {
     @Environment(\.density) private var d
 
     var body: some View {
-        let cover = d.v(170, 204)
+        let pick = PickDeckSize.card(d.card)
         HStack(alignment: .top, spacing: d.v(22, 32)) {
             VStack(alignment: .leading, spacing: d.v(8, 10)) {
                 Bar(width: 150, height: d.sectionTitle * 0.85, radius: 5)
                     .padding(.vertical, d.sectionTitle * 0.12)
-                HStack(spacing: d.v(16, 22)) {
-                    Bar(width: cover, height: cover, radius: 8)
-                    VStack(alignment: .leading, spacing: 9) {
-                        Bar(width: 130, height: 10)
-                        Bar(width: 180, height: d.v(20, 24), radius: 5)
-                        Bar(width: 120, height: 10)
-                        HStack(spacing: 10) {
-                            Circle().frame(width: d.v(36, 40), height: d.v(36, 40))
-                            Capsule().frame(width: 64, height: 28)
-                        }
-                        .padding(.top, 6)
-                    }
-                }
+                Bar(width: pick.width, height: pick.height, radius: 12)
+                Color.clear.frame(height: 22)   // the dots under the deck
             }
-            .frame(width: d.v(400, 480), alignment: .leading)
+            .frame(width: PickDeckSize.width(card: d.card, count: 3), alignment: .leading)
             VStack(alignment: .leading, spacing: d.v(8, 10)) {
                 Bar(width: 210, height: d.sectionTitle * 0.85, radius: 5)
                     .padding(.vertical, d.sectionTitle * 0.12)
                 HStack(alignment: .top, spacing: d.cardGap) {
                     ForEach(0..<8, id: \.self) { _ in
-                        SkelCard(width: d.card, imageHeight: d.card)
+                        SkelCard(width: d.card, imageHeight: d.card * StationCard.aspect)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: d.card + d.v(44, 50), alignment: .top)
+                .frame(height: d.card * StationCard.aspect + d.v(44, 50), alignment: .top)
                 .clipped()
             }
         }
