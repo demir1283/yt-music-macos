@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 3.2.1 — 2026-11-25
+
+Wide cards for Picked for you, notifications newest first, a roomier player bar on laptop screens, and fixes.
 
 - **Picked for you, in wide cards.** The deck still slides from pick to pick, now with cards wider than tall: the cover, blurred, colours the card, the artist's own picture fills its left and melts into that colour, and the cover floats sharp over the seam. The name and artists use the card's width. Ten picks instead of five, and a sideways two-finger swipe on the trackpad moves to the next or the previous one.
 - **Home: the picks above the notifications.** Senin için seçildi and the stations now come right under the greeting, the notifications after them; the loading placeholders follow the new order and sizes. A playlist's pick shows the picture of its first song's artist.
