@@ -739,7 +739,7 @@ struct CategoryGrid: View {
                 SectionTitle(title: section.title)
                     .padding(.horizontal, d.pad)
             }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: d.v(140, 170), maximum: 240), spacing: d.v(10, 14))],
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: CategoryTile.minWidth(d), maximum: 300), spacing: d.v(10, 14))],
                       spacing: d.v(10, 14)) {
                 ForEach(section.items) { CategoryTile(item: $0) }
             }
@@ -748,30 +748,166 @@ struct CategoryGrid: View {
     }
 }
 
+/// A mood or genre, as in Spotify's "browse all": the category's own colour (YouTube's),
+/// its name at the top left, and the cover of its first list — what YouTube Music shows
+/// for it in your region — tilted at the bottom right, partly off the card. The cover's own
+/// colour glows out around it and melts into the card's, so the two make one picture. On
+/// hover the next two lists of the category fan out from under it to the left, like a hand
+/// of cards.
 struct CategoryTile: View {
     let item: MediaItem
     @Environment(AppModel.self) private var app
     @ViewState var hover = false
+    @ViewState var cover: CategoryCover? = nil
     @Environment(\.density) private var d
+
+    static func minWidth(_ d: Density) -> CGFloat { d.v(180, 210) }
+    static let aspect: CGFloat = 1.75
 
     var body: some View {
         let color = Color(hexString: item.color) ?? Palette.color(for: item.title)
-        ZStack(alignment: .bottomLeading) {
-            LinearGradient(colors: [color, color.scaledBrightness(0.6)], startPoint: .topLeading, endPoint: .bottomTrailing)
-            Text(item.title)
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(.white)
-                .lineLimit(2)
-                .shadow(color: .black.opacity(0.25), radius: 4)
-                .padding(12)
+        GeometryReader { g in
+            // Big, and mostly inside the card: the category's face.
+            let side = (g.size.height * 0.88).rounded()
+            let center = CGPoint(x: g.size.width - side * 0.36, y: g.size.height - side * 0.28)
+            ZStack(alignment: .topLeading) {
+                LinearGradient(colors: [color, color.scaledBrightness(0.72)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+                // The cover's colour, spreading from under it into the card's.
+                if let tint = cover?.tint {
+                    RadialGradient(colors: [tint.opacity(0.95), tint.opacity(0.45), tint.opacity(0)],
+                                   center: UnitPoint(x: center.x / max(g.size.width, 1), y: center.y / max(g.size.height, 1)),
+                                   startRadius: side * 0.2, endRadius: g.size.width * 0.72)
+                }
+                if let cover {
+                    // The next lists peek out from behind the first; on hover they fan out to
+                    // the left like a hand of cards.
+                    ForEach(Array(cover.more.enumerated().reversed()), id: \.element) { i, url in
+                        let step = CGFloat(i + 1)
+                        Artwork(url: url, cornerRadius: 7, placeholder: "music.note.list")
+                            .frame(width: side * 0.9, height: side * 0.9)
+                            .shadow(color: .black.opacity(hover ? 0.35 : 0.25), radius: hover ? 10 : 6, x: -2, y: 3)
+                            .rotationEffect(.degrees(hover ? 24 - 11 * Double(step) : 24 - 5 * Double(step)))
+                            .position(x: center.x - side * (hover ? 0.38 : 0.11) * step,
+                                      y: center.y + side * (hover ? 0.04 : 0.02) * step)
+                    }
+                    Artwork(url: cover.url, cornerRadius: 7, placeholder: "music.note.list")
+                        .frame(width: side, height: side)
+                        .shadow(color: (cover.tint ?? .black).opacity(0.55), radius: 14, x: -3, y: 4)
+                        .rotationEffect(.degrees(hover ? 28 : 24))
+                        .scaleEffect(hover ? 1.04 : 1)
+                        .position(center)
+                }
+                Text(item.title)
+                    .font(.system(size: d.v(15, 17), weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .shadow(color: .black.opacity(0.3), radius: 4)
+                    .frame(width: max(70, g.size.width - side * 1.02 - 14), alignment: .topLeading)
+                    .padding(.leading, 14)
+                    .padding(.top, 12)
+            }
+            // The cover and its glow come in together, once, softly.
+            .animation(.easeOut(duration: 0.45), value: cover?.url)
+            // The fan opens and closes with a soft spring.
+            .animation(.spring(response: 0.42, dampingFraction: 0.82), value: hover)
         }
-        .frame(height: d.tileHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .aspectRatio(Self.aspect, contentMode: .fit)
+        // Drawn as one picture: the tilted, glowing cover costs nothing while scrolling.
+        .drawingGroup()
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .scaleEffect(hover ? 1.02 : 1)
-        .shadow(color: .black.opacity(hover ? 0.2 : 0.08), radius: hover ? 8 : 3, y: 2)
+        .shadow(color: .black.opacity(hover ? 0.22 : 0.08), radius: hover ? 10 : 3, y: 2)
         .contentShape(Rectangle())
-        .scrollAwareHover($hover, animation: .easeOut(duration: 0.15))
+        .scrollAwareHover($hover, animation: .soft)
         .onTapGesture { app.open(item) }
+        .task(id: item.id) {
+            guard cover == nil else { return }
+            cover = await CategoryCovers.shared.cover(for: item)
+        }
+    }
+}
+
+/// A mood or genre's picture and its main colour.
+struct CategoryCover: Equatable {
+    let url: String
+    let tint: Color?
+    /// The next two lists' covers, for the fan on hover.
+    var more: [String] = []
+}
+
+/// The covers of the moods and genres: looked up once (a few at a time, as tiles come into
+/// view), with their main colour, kept in memory and for three days on this Mac, per
+/// language. The picture is downloaded before the tile is told, so it appears whole.
+@MainActor
+final class CategoryCovers {
+    static let shared = CategoryCovers()
+    private static let key = "categoryCovers3"
+    private static let life: TimeInterval = 3 * 24 * 3600
+
+    private var memory: [String: CategoryCover?] = [:]
+    private var running: [String: Task<CategoryCover?, Never>] = [:]
+    private var busy = 0
+
+    private init() {
+        let now = Date().timeIntervalSince1970
+        let kept = UserDefaults.standard.dictionary(forKey: Self.key) as? [String: [String: Any]] ?? [:]
+        for (k, v) in kept {
+            guard let url = v["url"] as? String, let at = v["at"] as? Double, now - at < Self.life else { continue }
+            memory[k] = CategoryCover(url: url, tint: (v["tint"] as? String).flatMap { Color(hexString: $0) },
+                                      more: v["more"] as? [String] ?? [])
+        }
+    }
+
+    func cover(for item: MediaItem) async -> CategoryCover? {
+        guard let id = item.browseId else { return nil }
+        let key = "\(M.turkish ? "tr" : "en")|\(id)|\(item.params ?? "")"
+        if let known = memory[key] {
+            if let known = known {
+                for url in [known.url] + known.more { _ = await ImageLoader.shared.load(url, maxPixel: 320) }
+            }
+            return known
+        }
+        if let task = running[key] { return await task.value }
+        let task = Task<CategoryCover?, Never> { [weak self] in
+            guard let self else { return nil }
+            // Four at a time, so a page of tiles doesn't fire forty requests at once.
+            while self.busy >= 4 { try? await Task.sleep(nanoseconds: 60_000_000) }
+            self.busy += 1
+            defer { self.busy -= 1 }
+            let urls = (try? await YTMusic.shared.call("categoryCovers", ["browseId": id, "params": item.params ?? ""],
+                                                        as: [String].self)) ?? []
+            guard let url = urls.first else {
+                self.memory[key] = .some(nil)
+                return nil
+            }
+            async let picture = ImageLoader.shared.load(url, maxPixel: 320)
+            let tint = await ColorExtractor.color(for: url)
+            _ = await picture
+            for extra in urls.dropFirst() { _ = await ImageLoader.shared.load(extra, maxPixel: 320) }
+            let cover = CategoryCover(url: url, tint: tint, more: Array(urls.dropFirst()))
+            self.store(cover, for: key)
+            return cover
+        }
+        running[key] = task
+        let cover = await task.value
+        running[key] = nil
+        return cover
+    }
+
+    private func store(_ cover: CategoryCover, for key: String) {
+        memory[key] = cover
+        var kept = UserDefaults.standard.dictionary(forKey: Self.key) as? [String: [String: Any]] ?? [:]
+        var entry: [String: Any] = ["url": cover.url, "at": Date().timeIntervalSince1970, "more": cover.more]
+        if let hex = cover.tint.flatMap(Self.hex) { entry["tint"] = hex }
+        kept[key] = entry
+        UserDefaults.standard.set(kept, forKey: Self.key)
+    }
+
+    private static func hex(_ color: Color) -> String? {
+        guard let c = NSColor(color).usingColorSpace(.sRGB) else { return nil }
+        let v = [c.redComponent, c.greenComponent, c.blueComponent].map { Int(($0 * 255).rounded()) }
+        return String(format: "#%02X%02X%02X", v[0], v[1], v[2])
     }
 }
 

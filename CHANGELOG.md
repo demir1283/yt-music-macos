@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Moods & Genres, redesigned.** Each mood or genre is now a wider card in its own colour (the one YouTube gives it), its name at the top left and, tilted at the bottom right, the cover of its first list — what YouTube Music shows for it in your region, so the cards change with it; the cover's own colour glows out around it and melts into the card's. Covers (and their colours) are looked up once, a few at a time, kept for three days, and appear whole, in one soft fade; each card is drawn as one picture, so the page scrolls smoothly. On hover the category's next two lists fan out from under the first to the left, like a hand of cards.
+
 ## 3.3.0 — 2026-11-26
 
 One grid of cards everywhere, artist pages that fill the screen, a greeting that changes, a more solid player bar, and Turkish and English kept apart.

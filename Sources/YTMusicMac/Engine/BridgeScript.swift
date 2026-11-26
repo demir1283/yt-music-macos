@@ -973,6 +973,16 @@ enum BridgeScript {
 
     // A video's channel and YouTube category (one request): tells music channels (artists,
     // labels, festivals) from the rest.
+    // A mood or genre's pictures: the covers of the first three lists on its page (so they
+    // are what YouTube Music shows there, in your region), square covers first.
+    async categoryCovers({ browseId, params }) {
+      const r = await api('browse', params ? { browseId, params } : { browseId });
+      const items = collectItems(r).filter((i) => i.thumbnail);
+      const square = items.filter((i) => !i.wide && (i.kind === 'playlist' || i.kind === 'album'));
+      const pick = (square.length ? square : items).map((i) => i.thumbnail);
+      return [...new Set(pick)].slice(0, 3);
+    },
+
     // The day a release came out: its first song's publish date on YouTube ("2026-11-20").
     async releaseDate({ browseId }) {
       const first = collectItems(await api('browse', { browseId })).find((i) => i.videoId);

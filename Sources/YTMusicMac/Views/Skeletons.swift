@@ -356,11 +356,11 @@ private struct SkelTiles: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             SkelTitle(width: 160)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: d.v(140, 170), maximum: 240), spacing: d.v(10, 14))],
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: CategoryTile.minWidth(d), maximum: 300), spacing: d.v(10, 14))],
                       spacing: d.v(10, 14)) {
                 ForEach(0..<count, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .frame(height: d.tileHeight)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .aspectRatio(CategoryTile.aspect, contentMode: .fit)
                 }
             }
             .padding(.horizontal, d.pad)
