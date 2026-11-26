@@ -41,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         _ = YTMusic.shared   // start loading YouTube Music right away
         Updater.shared.start()
         Inbox.shared.start()
+        Greeting.shared.start()
 
         // Space bar = play/pause, unless the user is typing somewhere.
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
@@ -304,6 +305,9 @@ enum M {
 
     static func t(_ tr: String, _ en: String) -> String { turkish ? tr : en }
 
+    /// "1 song" / "3 songs" for English; Turkish nouns stay singular after a number.
+    static func count(_ n: Int, _ one: String, _ many: String) -> String { "\(n) \(n == 1 ? one : many)" }
+
     /// Quits the app and opens it again. A small shell waits until this copy has really
     /// quit before opening the app, so two copies are never open at once (and if quitting
     /// were refused, nothing new opens).
@@ -335,7 +339,7 @@ struct AppCommands: Commands {
                 .keyboardShortcut(",", modifiers: .command)
         }
 
-        CommandMenu(M.t("Oynatma", "Controls")) {
+        CommandMenu(M.t("Denetimler", "Controls")) {
             Button(M.t("Çal / Duraklat", "Play / Pause")) { model.engine.togglePlay() }
             Button(M.t("Sonraki", "Next")) { model.engine.next() }
                 .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
@@ -378,7 +382,7 @@ struct AppCommands: Commands {
             Button(M.t("Geri", "Back")) { model.back() }
                 .keyboardShortcut("[", modifiers: .command)
             Divider()
-            Button(M.t("Yan Paneli Göster/Gizle", "Show/Hide Side Panel")) { model.togglePanel() }
+            Button(M.t("Sözleri ve Sırayı Göster/Gizle", "Show/Hide Lyrics and Queue")) { model.togglePanel() }
                 .keyboardShortcut("p", modifiers: [.command, .option])
             Button(M.t("Şarkı Sözleri", "Lyrics")) { model.toggleLyrics() }
                 .keyboardShortcut("l", modifiers: [.command, .shift])

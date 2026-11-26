@@ -71,7 +71,7 @@ struct UpdateAction: View {
                 .buttonStyle(.plain)
                 .help(M.t("Ayrıntılar", "Details"))
                 .popover(isPresented: $showLog, arrowEdge: .trailing) { UpdateLog(log: log) }
-                pill(M.t("Tekrar Dene", "Try Again")) { updater.resetFailure(); updater.update() }
+                pill(M.t("Yeniden Dene", "Try Again")) { updater.resetFailure(); updater.update() }
             }
         }
     }

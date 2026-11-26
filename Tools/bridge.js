@@ -19,12 +19,18 @@
   const nextId = (p) => `${p}${SALT}${++counter}`;
   const num = (x) => (Number.isFinite(x) ? x : 0);
 
-  const text = (t) => {
+  const rawText = (t) => {
     if (!t) return '';
     if (typeof t === 'string') return t;
     if (t.simpleText != null) return String(t.simpleText);
     if (Array.isArray(t.runs)) return t.runs.map((r) => r.text || '').join('');
     return '';
+  };
+  // YouTube's Turkish says "Oynatma listesi" where the app (and YouTube Music) say "Çalma
+  // listesi": one word for playlists throughout.
+  const text = (t) => {
+    const s = rawText(t);
+    return uiTurkish && s.includes('ynatma liste') ? s.replace(/Oynatma liste/g, 'Çalma liste').replace(/oynatma liste/g, 'çalma liste') : s;
   };
 
   const SKIP = new Set(['responseContext', 'frameworkUpdates', 'trackingParams', 'clickTrackingParams']);
@@ -491,7 +497,9 @@
     const out = await http(url, 'POST', headers,
       JSON.stringify(Object.assign({ context: cfg.get('INNERTUBE_CONTEXT') }, body || {})),
       cfg.get('LOGGED_IN') ? location.origin : '');
-    if (out.status < 200 || out.status >= 300) throw new Error(`YouTube Music ${out.status} hatası (${endpoint})`);
+    if (out.status < 200 || out.status >= 300) {
+      throw new Error(uiTurkish ? `YouTube Music ${out.status} hatası (${endpoint})` : `YouTube Music error ${out.status} (${endpoint})`);
+    }
     return JSON.parse(out.body);
   }
 
@@ -607,7 +615,8 @@
       // YouTube's own reason ("Request contains an invalid argument." …), for the log.
       let reason = '';
       try { reason = JSON.parse(out.body)?.error?.message || ''; } catch (e) { /* not JSON */ }
-      throw new Error(`YouTube ${out.status} hatası (${endpoint})${reason ? ': ' + reason : ''}`);
+      throw new Error((uiTurkish ? `YouTube ${out.status} hatası (${endpoint})` : `YouTube error ${out.status} (${endpoint})`)
+        + (reason ? ': ' + reason : ''));
     }
     return JSON.parse(out.body);
   }
@@ -815,6 +824,29 @@
     }));
   }
 
+  // A page whose cards sit outside any shelf (some "see all" pages): them as one row. A
+  // channel's videos page that YouTube Music sends empty: the channel's videos tab on
+  // YouTube instead. `shape`: what the page held when nothing was found (for the log).
+  async function looseSections(r, browseId, params) {
+    const row = (items, continuation, shape) => ({ sections: [{ id: nextId('s'), title: '', strapline: null,
+      layout: 'cards', items, more: null, continuation: continuation || null, top: null }], shape });
+    const items = collectItems(r).filter((i) => i.browseId || i.videoId);
+    if (items.length) return row(items, anyToken(r), 'loose cards');
+    if (browseId.startsWith('UC') && params) {
+      try {
+        const y = await webApi('browse', { browseId, params: 'EgZ2aWRlb3PyBgQKAjoA' });
+        const videos = ytItems(y).filter((v) => !v.mix).map((v) => v.item);
+        if (videos.length) return row(videos, null, 'YouTube videos tab');
+      } catch (e) { /* nothing more to try */ }
+    }
+    const keys = new Set();
+    (function walk(n, d) {
+      if (!n || typeof n !== 'object' || d > 12 || keys.size > 30) return;
+      for (const k in n) { if (/Renderer$|ViewModel$/.test(k)) keys.add(k); walk(n[k], d + 1); }
+    })(r, 0);
+    return { sections: [], shape: [...keys].join(', ') || 'empty' };
+  }
+
   // The first page of a library list: its items with a page, and the token for the rest.
   function libraryFirstPage(r) {
     const items = [];
@@ -986,9 +1018,11 @@
 
     async browse({ browseId, params }) {
       const r = await api('browse', params ? { browseId, params } : { browseId });
-      const sections = extractSections(r);
+      let sections = extractSections(r);
       if (browseId.startsWith('UC')) await fillLengths(sections);
-      return { header: parseHeader(r), chips: chipsOf(r), sections, continuation: sectionListToken(r) };
+      let shape = null;
+      if (!sections.length) ({ sections, shape } = await looseSections(r, browseId, params));
+      return { header: parseHeader(r), chips: chipsOf(r), sections, continuation: sectionListToken(r), shape };
     },
 
     async more({ token }) {
@@ -1395,7 +1429,7 @@
         id = findKey(r, 'audioPlaylistId') || findKey(r, 'playlistId');
       }
       if (!id && browseId && browseId.startsWith('VL')) id = browseId;
-      if (!id) throw new Error('no playlist for ' + browseId);
+      if (!id) throw new Error(uiTurkish ? 'Bu içeriğin çalma listesi bulunamadı' : 'No playlist was found for this item');
       await api(on ? 'like/like' : 'like/removelike', { target: { playlistId: plId(id) } });
       return true;
     },
@@ -1442,7 +1476,7 @@
   window.__ytmusic = {
     async call(name, argsJSON) {
       const fn = E[name];
-      if (!fn) throw new Error('Bilinmeyen komut: ' + name);
+      if (!fn) throw new Error((uiTurkish ? 'Bilinmeyen komut: ' : 'Unknown command: ') + name);
       const res = await fn(argsJSON ? JSON.parse(argsJSON) : {});
       return JSON.stringify(res === undefined ? null : res);
     },

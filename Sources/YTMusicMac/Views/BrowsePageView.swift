@@ -52,7 +52,8 @@ struct BrowsePageView: View {
                             if s.layout == "cards" && single {
                                 VStack(alignment: .leading, spacing: d.v(10, 12)) {
                                     if !s.title.isEmpty { SectionTitle(title: s.title).padding(.horizontal, d.pad) }
-                                    CardGrid(items: s.items)
+                                    // A screenful, then more on request (and the next pages).
+                                    PagedCardGrid(items: s.items, startRows: 4, title: s.title, continuation: s.continuation)
                                 }
                             } else if s.layout == "list" && s.hasTracks {
                                 TrackListSection(section: s, limit: single ? 300 : 10, numbered: target.browseId == "FEmusic_charts")

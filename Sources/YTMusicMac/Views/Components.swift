@@ -353,7 +353,7 @@ struct ErrorView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button(M.t("Tekrar Dene", "Try Again"), action: retry)
+            Button(M.t("Yeniden Dene", "Try Again"), action: retry)
                 .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, minHeight: 300)

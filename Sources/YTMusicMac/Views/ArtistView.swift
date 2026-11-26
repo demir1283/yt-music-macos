@@ -30,6 +30,9 @@ struct ArtistView: View {
             LazyVStack(alignment: .leading, spacing: d.sectionGap) {
                 if let page = current {
                     hero(page.header)
+                    // A thin page (only a row of long videos, say) wraps its card rows into
+                    // grids that fill the screen instead of one row to scroll.
+                    let grids = ShelfGrid.rows(for: page.sections)
                     ForEach(page.sections) { s in
                         VStack(alignment: .leading, spacing: 0) {
                             // The popular songs list opened from here gets a cover with the artist's name.
@@ -37,7 +40,7 @@ struct ArtistView: View {
                                 TrackListSection(section: s, limit: 5, numbered: false)
                                     .environment(\.pageArtist, name)
                             } else {
-                                ShelfView(section: s)
+                                ShelfView(section: s, gridRows: grids[s.id])
                             }
                         }
                         .fadeSwap(s.contentKey, id: s.id)
@@ -234,9 +237,9 @@ private struct SubscribeButton: View {
         .buttonStyle(PressScaleStyle())
         .disabled(busy)
         .onHover { hover = $0 }
-        .help(failure ?? (on ? M.t("Aboneliği iptal et", "Unsubscribe") : M.t("\(name) kanalına abone ol", "Subscribe to \(name)")))
+        .help(failure ?? (on ? M.t("Abonelikten çık", "Unsubscribe") : M.t("\(name) kanalına abone ol", "Subscribe to \(name)")))
         .animation(.easeInOut(duration: 0.2), value: on)
-        .confirmationDialog(M.t("\(name) kanalından aboneliğin iptal edilsin mi?", "Unsubscribe from \(name)?"), isPresented: $confirm) {
+        .confirmationDialog(M.t("\(name) aboneliğinden çıkılsın mı?", "Unsubscribe from \(name)?"), isPresented: $confirm) {
             Button(M.t("Abonelikten Çık", "Unsubscribe"), role: .destructive) { set(false) }
             Button(M.t("Vazgeç", "Cancel"), role: .cancel) {}
         }

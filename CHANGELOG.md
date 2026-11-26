@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.3.0 — 2026-11-26
+
+One grid of cards everywhere, artist pages that fill the screen, a greeting that changes, a more solid player bar, and Turkish and English kept apart.
+
+- **Turkish and English, consistently.** YouTube's own texts (row titles such as "Videos", dates) now always come in the app's language, so a Turkish Mac with an English YouTube account no longer mixes the two. Error messages from YouTube follow the app's language too. In Turkish one word for each thing: "Çalma listesi" (YouTube's "Oynatma listesi" included), "Abonelikten çık", "Beğenmedim", "Çalınamadı", "Yeniden dene"; the Controls menu is "Denetimler", as in Apple Music, and the side panel's menu item names what it shows. In English, "1 song", "1 item" instead of "1 songs", "1 items".
+- **A greeting that changes.** The home page still greets you by the time of day at launch; then every ten minutes the line changes, with a soft cross-fade, to one of a hundred short lines from the world of music, in Turkish or English, each with its emoji (night lines only at night, morning lines only in the morning).
+- **"Show More", two rows at a time.** Grids of cards ("see all" pages, thin artist pages) show a screenful, and "Show More" — now a pill like the filter chips — adds two rows each time, bringing in the next cards (the "see all" page, then its following pages) until there are none left.
+- **Artist pages that fill the screen.** An artist page with little on it — only a row of long videos, say — no longer leaves one row to scroll sideways under an empty screen: its card rows wrap into a grid (three rows when there is one, two each when there are two), the cards widened to fill each row, with "Show More" for the rest and for what the row's "see all" page holds (all of a channel's videos). Full pages keep their rows to scroll.
+- **One grid everywhere.** Every grid of cards — the library, "see all" pages, search filters, thin artist pages — now lays out like the rows of the home page and search: covers at a row's cover size, videos 16:9 at a row's video size (no more small boxes), as many as fit and widened to fill each row. "Show More" sits under the cards, at their right.
+- **Fixed: a channel's "Videos" page could be empty.** When YouTube Music sends a "see all" page with its cards outside any row, they are gathered into one; when it sends a channel's videos page empty, the channel's videos come from YouTube instead.
+- **A more solid player bar.** At rest the bar now has a wash of the window's colour under its glass, so its buttons, title and times stay readable over busy covers; on hover it turns more solid still.
+
 ## 3.2.1 — 2026-11-25
 
 Wide cards for Picked for you, notifications newest first, a roomier player bar on laptop screens, and fixes.

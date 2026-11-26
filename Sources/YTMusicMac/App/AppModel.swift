@@ -533,6 +533,10 @@ final class AppModel {
             page = try await podcastsPage()
         } else {
             page = try await engine.browse(target.browseId, params: target.params)
+            if let shape = page.shape {
+                EngineLog.write("Sayfa \(target.browseId)\(target.params == nil ? "" : " (params)"): "
+                                + "\(page.sections.isEmpty ? "boş, içinde: " : "")\(shape)")
+            }
         }
         // A mix YouTube Music builds as it plays (Supermix'im…): its page comes without songs,
         // so they come from the queue it would play, under the page's own title and cover.

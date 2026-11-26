@@ -318,7 +318,7 @@ struct BootOverlay: View {
                 if let err = app.engine.loadError {
                     Text(M.t("YouTube Music'e ulaşılamadı", "Couldn't reach YouTube Music")).font(.headline)
                     Text(err).font(.callout).foregroundStyle(.secondary)
-                    Button(M.t("Tekrar Dene", "Try Again")) { app.engine.reloadHome() }
+                    Button(M.t("Yeniden Dene", "Try Again")) { app.engine.reloadHome() }
                 } else {
                     ProgressView().controlSize(.small)
                     Text(M.t("YouTube Music'e bağlanılıyor…", "Connecting to YouTube Music…"))

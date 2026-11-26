@@ -45,9 +45,10 @@ struct PlayerBar: View {
             .onPreferenceChange(TrailingWidthKey.self) { trailingWidth = $0 }
             .padding(.horizontal, 16)
             .frame(width: geo.size.width, height: d.playerBar)
-            // On hover the bar grows a touch in every direction and turns less transparent.
+            // A wash of the window's colour under the glass keeps the buttons and the title
+            // readable over busy covers; on hover the bar grows a touch and turns more solid.
             .background(
-                Capsule().fill(Color(nsColor: .windowBackgroundColor).opacity(hover ? 0.6 : 0))
+                Capsule().fill(Color(nsColor: .windowBackgroundColor).opacity(hover ? 0.72 : Self.restingWash))
             )
             .glassCapsule()
             .overlay(alignment: .bottom) {
@@ -61,6 +62,9 @@ struct PlayerBar: View {
         }
         .frame(height: d.playerBar)
     }
+
+    /// How much of the window's colour sits under the glass at rest (0: clear glass).
+    private static let restingWash: Double = 0.5
 
     /// Below this, the centred now-playing block cuts titles short (cover, a readable title
     /// and the times).
@@ -289,7 +293,7 @@ private struct TrailingControls: View {
         HStack(spacing: 4) {
             if !compact {
                 ToolbarIconButton(system: e.likeStatus == "DISLIKE" ? "hand.thumbsdown.fill" : "hand.thumbsdown",
-                                  size: 14, help: M.t("Beğenme", "Dislike")) { e.dislike() }
+                                  size: 14, help: M.t("Beğenmedim", "Dislike")) { e.dislike() }
                     .disabled(e.track == nil)
             }
             ToolbarIconButton(system: e.likeStatus == "LIKE" ? "hand.thumbsup.fill" : "hand.thumbsup",

@@ -4,6 +4,9 @@ import SwiftUI
 struct ShelfView: View {
     let section: Shelf
     var trackLimit = 6
+    /// Rows to wrap a card row into (instead of one row to scroll), when the page has
+    /// little else to show (ShelfGrid.rows).
+    var gridRows: Int? = nil
     @Environment(AppModel.self) private var app
 
     /// Without what the user said not to recommend (it leaves at once, the rest closes up).
@@ -40,10 +43,45 @@ struct ShelfView: View {
                     TrackListSection(section: section, limit: trackLimit)
                 }
             default:
-                CardCarousel(section: section)
+                if let rows = gridRows {
+                    ShelfGrid(section: section, rows: rows)
+                } else {
+                    CardCarousel(section: section)
+                }
             }
         }
         .fadeIn()
+    }
+}
+
+/// A card row wrapped into a grid: on a page with little else (an artist with only long
+/// videos, say) one row to scroll sideways would leave the screen empty.
+struct ShelfGrid: View {
+    let section: Shelf
+    let rows: Int
+    @Environment(\.density) private var d
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: d.v(8, 10)) {
+            ShelfHeader(section: section)
+            PagedCardGrid(items: section.items, startRows: rows, moreLink: section.more,
+                          title: section.title, continuation: section.continuation)
+        }
+    }
+
+    /// Which card rows of a page to wrap, and into how many rows each: only when the page
+    /// is thin — four rows in all at most, and at most two card rows with six cards or more —
+    /// so one row to scroll would leave most of the screen empty. A lone big row gets three
+    /// rows, two big rows two each. Videos count as cards here (they have a videoId, but
+    /// they are a row of cards all the same).
+    nonisolated static func rows(for sections: [Shelf]) -> [String: Int] {
+        let big = sections.filter { s in
+            s.items.count >= 6
+                && !["shortcuts", "picks", "similar", "spotlight", "nav", "top", "list"].contains(s.layout)
+        }
+        guard sections.count <= 4, !big.isEmpty, big.count <= 2 else { return [:] }
+        let rows = big.count == 1 ? 3 : 2
+        return Dictionary(uniqueKeysWithValues: big.map { ($0.id, rows) })
     }
 }
 
@@ -738,23 +776,187 @@ struct CategoryTile: View {
 }
 
 /// Wrapping grid of cards (library, filtered search, "see all" pages).
+/// A CardGrid shown a few rows at a time: "Daha Fazla Göster" adds two rows, bringing in
+/// more cards when the ones at hand run out — the row's "see all" page first, then its
+/// following pages — until there are none left; then "Daha Az Göster" folds it back.
+struct PagedCardGrid: View {
+    let items: [MediaItem]
+    let startRows: Int
+    /// The row's "see all" page, read when the cards at hand run out.
+    var moreLink: MoreLink? = nil
+    var title: String = ""
+    /// The next page of these cards.
+    var continuation: String? = nil
+
+    @ViewState var width: CGFloat = 900
+    /// Rows shown (0: `startRows`).
+    @ViewState var rowsShown = 0
+    @ViewState var extra: [MediaItem] = []
+    /// Where the next cards come from, once the given `continuation` has been used.
+    @ViewState var token: String? = nil
+    @ViewState var tokenTaken = false
+    @ViewState var linkRead = false
+    @ViewState var loading = false
+    @Environment(\.density) private var d
+    @Environment(AppModel.self) private var app
+
+    static let step = 2
+
+    private var all: [MediaItem] {
+        var seen = Set<String>()
+        return (items + extra).filter { seen.insert($0.recommendationKey).inserted }
+    }
+
+    private var canFetch: Bool {
+        (moreLink?.browseId != nil && !linkRead) || (tokenTaken ? token : continuation) != nil
+    }
+
+    var body: some View {
+        let cards = all
+        let perRow = CardGrid.metrics(cards, width: width, d: d).perRow
+        let rows = rowsShown == 0 ? startRows : rowsShown
+        let hasMore = cards.count > perRow * rows || canFetch
+        VStack(alignment: .leading, spacing: d.v(12, 16)) {
+            CardGrid(items: cards, rows: rows)
+            if hasMore || rows > startRows {
+                MoreButton(expand: hasMore, loading: loading) {
+                    if hasMore {
+                        showMore(rows: rows + Self.step, perRow: perRow)
+                    } else {
+                        withAnimation(.soft) { rowsShown = startRows }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.horizontal, d.pad)
+            }
+        }
+        .background(GeometryReader { g in
+            Color.clear
+                .onAppear { width = g.size.width }
+                .onChange(of: g.size.width) { _, w in width = w }
+        })
+    }
+
+    private func showMore(rows: Int, perRow: Int) {
+        let needed = rows * perRow
+        guard all.count < needed, canFetch else {
+            withAnimation(.soft) { rowsShown = rows }
+            return
+        }
+        loading = true
+        Task {
+            // A few pages at most, until the new rows are full or nothing is left.
+            for _ in 0..<3 where all.count < needed && canFetch {
+                await fetch()
+            }
+            loading = false
+            withAnimation(.soft) { rowsShown = rows }
+        }
+    }
+
+    private func fetch() async {
+        if let link = moreLink, let id = link.browseId, !linkRead {
+            linkRead = true
+            let target = BrowseTarget(browseId: id, params: link.params, kind: "browse", title: title)
+            if let page = try? await app.page(for: target) {
+                extra += page.sections.flatMap(\.items)
+                token = page.sections.compactMap(\.continuation).first
+                tokenTaken = true
+            }
+            return
+        }
+        let next = tokenTaken ? token : continuation
+        tokenTaken = true
+        token = nil
+        guard let next, let more = try? await app.engine.more(next) else { return }
+        extra += more.items
+        token = more.continuation == next ? nil : more.continuation
+    }
+}
+
+/// "Daha Fazla Göster" / "Daha Az Göster": a pill like the filter chips, under the cards
+/// at their right.
+struct MoreButton: View {
+    let expand: Bool
+    var loading = false
+    let action: () -> Void
+    @ViewState var hover = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(expand ? M.t("Daha Fazla Göster", "Show More") : M.t("Daha Az Göster", "Show Less"))
+                    .font(.system(size: 12, weight: .semibold))
+                Group {
+                    if loading {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Image(systemName: expand ? "chevron.down" : "chevron.up")
+                            .font(.system(size: 9.5, weight: .bold))
+                    }
+                }
+                .frame(width: 12)
+            }
+            .foregroundStyle(Color.primary)
+            .padding(.horizontal, 14)
+            .frame(height: 30)
+            .background(Capsule().fill(Color.primary.opacity(hover ? 0.12 : 0.07)))
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(PressScaleStyle())
+        .disabled(loading)
+        .onHover { h in withAnimation(.soft) { hover = h } }
+    }
+}
+
+/// The app's one grid of cards (library, "see all" pages, search filters, thin artist
+/// pages). Cards keep the size they have in the rows of the home page and search — a cover
+/// as wide as a row's cover, a video 16:9 at a row's video height — as many a row as fit,
+/// then widened to fill the row exactly. `rows`: only the first rows (nil: all).
 struct CardGrid: View {
     let items: [MediaItem]
+    var rows: Int? = nil
+    @ViewState var width: CGFloat = 900
     @Environment(AppModel.self) private var app
     @Environment(\.density) private var d
+
+    struct Metrics {
+        let perRow: Int
+        let card: CGFloat
+        let image: CGFloat
+    }
+
+    /// How cards of `items` lay out in `width` (the grid's whole width, margins included).
+    nonisolated static func metrics(_ items: [MediaItem], width: CGFloat, d: Density) -> Metrics {
+        let wide = !items.isEmpty && items.filter(\.wide).count * 2 >= items.count
+        let base: CGFloat = wide ? (d.cardMixed * 16 / 9).rounded() : d.gridCard
+        let inner = max(base, width - d.pad * 2)
+        let perRow = max(1, Int((inner + d.cardGap) / (base + d.cardGap)))
+        let card = ((inner - d.cardGap * CGFloat(perRow - 1)) / CGFloat(perRow)).rounded(.down)
+        return Metrics(perRow: perRow, card: card, image: wide ? (card * 9 / 16).rounded() : card)
+    }
 
     var body: some View {
         // What the user said not to recommend leaves at once; the cards after it move up.
         let hidden = app.hiddenKeys
-        let shown = hidden.isEmpty ? items : items.filter { !hidden.contains($0.recommendationKey) }
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: d.gridCard, maximum: d.gridCard + 40), spacing: d.cardGap, alignment: .top)],
+        let all = hidden.isEmpty ? items : items.filter { !hidden.contains($0.recommendationKey) }
+        let m = Self.metrics(all, width: width, d: d)
+        let shown = rows.map { Array(all.prefix(m.perRow * $0)) } ?? all
+        LazyVGrid(columns: Array(repeating: GridItem(.fixed(m.card), spacing: d.cardGap, alignment: .top), count: m.perRow),
                   alignment: .leading, spacing: d.v(16, 24)) {
-            ForEach(shown) {
-                ItemCard(item: $0, width: d.gridCard)
-                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+            ForEach(shown) { item in
+                ItemCard(item: item, width: m.card, imageHeight: m.image)
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
             }
         }
         .padding(.horizontal, d.pad)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(GeometryReader { g in
+            Color.clear
+                .onAppear { width = g.size.width }
+                .onChange(of: g.size.width) { _, w in width = w }
+        })
     }
 }
 

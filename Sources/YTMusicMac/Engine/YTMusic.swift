@@ -184,8 +184,9 @@ final class YTMusic {
             "hasAuth": YTAuth.hasAuthCookies,
             "lang": Locale.current.language.languageCode?.identifier ?? "en",
             "region": Locale.current.region?.identifier ?? "US",
-            // A language picked in Settings: ask YouTube for its texts in that language too.
-            "forceLang": M.launchedChoice ?? "",
+            // YouTube's own texts (row titles, "Videos", dates) in the app's language, so the
+            // two never mix (a Turkish Mac with an English YouTube account, say).
+            "forceLang": M.turkish ? "tr" : "en",
             "ui": M.turkish ? "tr" : "en",
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: args),
@@ -1652,7 +1653,7 @@ final class YTMusic {
                              wide: false, color: nil)
         }
         let header = PageHeader(style: "collection", title: target.title ?? "", subtitle: target.about ?? "",
-                                secondSubtitle: M.t("\(items.count) şarkı", "\(items.count) songs"), strapline: "",
+                                secondSubtitle: M.t("\(items.count) şarkı", M.count(items.count, "song", "songs")), strapline: "",
                                 description: "", thumbnail: target.cover, strapThumb: nil, subscribers: "",
                                 play: endpoint, shuffle: nil, radio: nil, artists: [])
         let list = Shelf(id: "mix-songs", title: "", strapline: nil, layout: "list", items: items,

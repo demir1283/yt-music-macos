@@ -52,9 +52,18 @@ struct ShortcutGrid: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: d.v(10, 14)) {
-            Text(section.title)
-                .font(.system(size: d.v(22, 26), weight: .bold))
-                .padding(.horizontal, d.pad)
+            // The greeting, then every ten minutes a line from the world of music: the old
+            // line drifts up and fades as the new one rises in (Greeting).
+            ZStack(alignment: .leading) {
+                Text(Greeting.shared.text)
+                    .font(.system(size: d.v(22, 26), weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .id(Greeting.shared.text)
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 10)),
+                                            removal: .opacity.combined(with: .offset(y: -10))))
+            }
+            .padding(.horizontal, d.pad)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: d.v(8, 10)), count: 4),
                       spacing: d.v(8, 10)) {
                 ForEach(section.items) { item in

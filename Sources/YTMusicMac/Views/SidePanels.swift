@@ -293,7 +293,7 @@ struct QueuePanel: View {
                     }
                 } else {
                     if let c = current {
-                        Text(M.t("Şu An Çalıyor", "Now Playing"))
+                        Text(M.t("Şu an çalıyor", "Now Playing"))
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 10)

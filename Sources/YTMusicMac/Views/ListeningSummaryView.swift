@@ -71,7 +71,7 @@ struct ListeningSummaryView: View {
                 .font(.system(size: d.v(22, 26), weight: .bold))
                 .contentTransition(.numericText())
             Text(M.t("\(s.songCount) farklı şarkı · \(s.artistCount) sanatçı ve kanal · \(s.plays) dinleme",
-                     "\(s.songCount) different songs · \(s.artistCount) artists and channels · \(s.plays) plays"))
+                     "\(M.count(s.songCount, "different song", "different songs")) · \(M.count(s.artistCount, "artist or channel", "artists and channels")) · \(M.count(s.plays, "play", "plays"))"))
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
                 .contentTransition(.numericText())

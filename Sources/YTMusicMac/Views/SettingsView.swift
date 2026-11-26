@@ -89,7 +89,7 @@ struct SettingsView: View {
                                 .onChange(of: leveling) { _, _ in app.engine.levelingChanged() }
                         }
                         RowDivider()
-                        SettingsRow(M.t("Radyoyu düzenle", "Tidy up radios"),
+                        SettingsRow(M.t("Radyoları düzenle", "Tidy up radios"),
                                     detail: M.t("Resmî sürümler önce, her şarkı bir kez. Uzun setler ve seçtiğin listeler olduğu gibi kalır.",
                                                 "Official versions first, each song once. Long sets and the lists you pick stay as they are.")) {
                             Toggle("", isOn: $curateRadio).switchStyle()
@@ -112,9 +112,9 @@ struct SettingsView: View {
                         RowDivider()
                         SettingsRow(M.t("Beğenilmeyen içerik", "Disliked content"),
                                     detail: app.hiddenKeys.isEmpty
-                                        ? M.t("Beğenmediğin ya da önerilmesini istemediğin bir şey yok.", "Nothing disliked or marked \"Don't recommend\".")
+                                        ? M.t("Beğenmediğin ya da önerilmesini istemediğin bir şey yok.", "Nothing disliked or marked “Don't recommend”.")
                                         : M.t("\(app.hiddenKeys.count) öğe; tek tek geri alabilirsin.",
-                                              "\(app.hiddenKeys.count) items; you can bring them back one by one.")) {
+                                              "\(M.count(app.hiddenKeys.count, "item", "items")); you can bring them back one by one.")) {
                             Button(M.t("Göster…", "Show…")) { showDisliked = true }
                                 .controlSize(.small)
                                 .disabled(app.hiddenKeys.isEmpty)

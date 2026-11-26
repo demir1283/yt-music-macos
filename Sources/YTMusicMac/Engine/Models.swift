@@ -222,6 +222,8 @@ struct BrowsePage: Codable {
     let chips: [FilterChip]
     var sections: [Shelf]
     var continuation: String?
+    /// How a page without shelves was read (or what it held instead), for the log.
+    var shape: String? = nil
 }
 
 struct MoreResult: Codable {

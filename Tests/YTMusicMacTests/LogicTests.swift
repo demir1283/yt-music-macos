@@ -348,3 +348,91 @@ final class ArtistCreditTests: XCTestCase {
         XCTAssertEqual(parts("Various Artists", [("Someone", "UC1")]), ["Various Artists"])
     }
 }
+
+final class ThinPageTests: XCTestCase {
+    private func shelf(_ id: String, layout: String = "cards", cards: Int = 10, tracks: Bool = false) -> Shelf {
+        let items = (0..<cards).map { i in
+            MediaItem(uid: "\(id)\(i)", kind: tracks ? "song" : "video", title: "\(i)", subtitle: "", thumbnail: nil,
+                      videoId: "v\(id)\(i)", browseId: nil, params: nil,
+                      playlistId: nil, artists: [], album: nil, duration: nil, explicit: false, play: nil,
+                      wide: !tracks, color: nil)
+        }
+        return Shelf(id: id, title: id, strapline: nil, layout: layout, items: items, more: nil, continuation: nil, top: nil)
+    }
+
+    func testAPageOfOnlyVideosWrapsThemIntoThreeRows() {
+        XCTAssertEqual(ShelfGrid.rows(for: [shelf("videos")]), ["videos": 3])
+    }
+
+    func testAChannelWithVideosAndOnePlaylist() {
+        // Flavour Trip: a row of videos and a row with a single playlist.
+        XCTAssertEqual(ShelfGrid.rows(for: [shelf("videos"), shelf("playlists", cards: 1)]), ["videos": 3])
+    }
+
+    func testTwoCardRowsShareTheRoom() {
+        let rows = ShelfGrid.rows(for: [shelf("songs", layout: "list", tracks: true), shelf("videos"), shelf("singles")])
+        XCTAssertEqual(rows, ["videos": 2, "singles": 2])
+    }
+
+    func testAFullPageKeepsItsRowsToScroll() {
+        let page = [shelf("songs", layout: "list", tracks: true), shelf("a"), shelf("b"), shelf("c"), shelf("d")]
+        XCTAssertEqual(ShelfGrid.rows(for: page), [:])
+    }
+
+    func testAShortRowStaysARow() {
+        XCTAssertEqual(ShelfGrid.rows(for: [shelf("videos", cards: 4)]), [:])
+    }
+}
+
+final class CardGridTests: XCTestCase {
+    private func items(_ n: Int, wide: Bool) -> [MediaItem] {
+        (0..<n).map { i in
+            MediaItem(uid: "\(i)", kind: wide ? "video" : "album", title: "\(i)", subtitle: "", thumbnail: nil,
+                      videoId: wide ? "v\(i)" : nil, browseId: wide ? nil : "b\(i)", params: nil, playlistId: nil,
+                      artists: [], album: nil, duration: nil, explicit: false, play: nil, wide: wide, color: nil)
+        }
+    }
+
+    func testVideosKeepTheSizeTheyHaveInRowsAndFillTheGrid() {
+        let d = Density.forWindow(CGSize(width: 1600, height: 1000))
+        let width: CGFloat = 1400
+        let m = CardGrid.metrics(items(12, wide: true), width: width, d: d)
+        let rowVideo = d.cardMixed * 16 / 9
+        XCTAssertGreaterThanOrEqual(m.card, rowVideo.rounded() - 1)      // never smaller than in a row
+        XCTAssertLessThan(m.card, rowVideo * 2)                          // nor one huge card
+        XCTAssertEqual(m.image, (m.card * 9 / 16).rounded())             // 16:9
+        let used = m.card * CGFloat(m.perRow) + d.cardGap * CGFloat(m.perRow - 1)
+        XCTAssertEqual(used, width - d.pad * 2, accuracy: CGFloat(m.perRow))  // the row is filled
+    }
+
+    func testCoversStaySquare() {
+        let d = Density.forWindow(CGSize(width: 1600, height: 1000))
+        let m = CardGrid.metrics(items(12, wide: false), width: 1200, d: d)
+        XCTAssertEqual(m.image, m.card)
+    }
+}
+
+final class GreetingTests: XCTestCase {
+    func testAHundredDifferentShortLines() {
+        let lines = Greeting.lines
+        XCTAssertEqual(lines.count, 100)
+        XCTAssertEqual(Set(lines.map(\.tr)).count, 100)
+        XCTAssertEqual(Set(lines.map(\.en)).count, 100)
+        XCTAssertTrue(lines.allSatisfy { $0.tr.count <= 45 && $0.en.count <= 45 && !$0.emoji.isEmpty })
+    }
+
+    func testNightLinesWaitForTheNight() {
+        let night = Greeting.lines.filter { $0.when == .night }
+        XCTAssertFalse(night.isEmpty)
+        XCTAssertTrue(night.allSatisfy { !$0.fits(9) && $0.fits(23) && $0.fits(2) })
+        XCTAssertTrue(Greeting.lines.filter { $0.when == .morning }.allSatisfy { $0.fits(8) && !$0.fits(21) })
+    }
+}
+
+final class CountWordingTests: XCTestCase {
+    func testOneIsSingular() {
+        XCTAssertEqual(M.count(1, "song", "songs"), "1 song")
+        XCTAssertEqual(M.count(0, "song", "songs"), "0 songs")
+        XCTAssertEqual(M.count(12, "item", "items"), "12 items")
+    }
+}
