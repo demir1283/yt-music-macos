@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 3.3.0" src="https://img.shields.io/badge/version-3.3.0-ff2d55">
+  <img alt="Version 3.4.0" src="https://img.shields.io/badge/version-3.4.0-ff2d55">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-000000?logo=apple">
   <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white">
   <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-3c8dbc">
@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/home.png" alt="The home page">
+  <img src="docs/screenshots/artist-page.png" alt="An artist page: the banner melting into the page, the artist's round photo beside their name, top songs with their plays, lyrics and the queue beside it">
 </p>
 
 <p align="center">
@@ -63,11 +63,11 @@ No browser and no web player inside: the stream YouTube serves is played as it i
 
 <table>
 <tr>
-<td width="75%"><img src="docs/screenshots/artist.png" alt="An artist page with the artist's own photo, lyrics beside it"></td>
+<td width="75%"><img src="docs/screenshots/home.png" alt="The home page"></td>
 <td width="25%"><img src="docs/screenshots/notifications.png" alt="New music from the artists you follow"></td>
 </tr>
 <tr>
-<td align="center"><sub>Artist pages with the artist's own photo · time-synced lyrics and the queue beside the music</sub></td>
+<td align="center"><sub>A home page of its own · picks for you, the artists you follow and a greeting that changes</sub></td>
 <td align="center"><sub>New music from the artists and channels you follow</sub></td>
 </tr>
 </table>
@@ -99,6 +99,7 @@ No browser and no web player inside: the stream YouTube serves is played as it i
 
 ## What's new
 
+- **3.4 — New artist pages and Moods & Genres with covers:** artist pages whose banner melts softly into the page, with the artist's round photo beside their name; a Plays column on albums and playlists; every mood and genre is a card in its own colour with the covers of its top lists for your region, glowing into the card and fanning out on hover; albums, playlists and podcasts saved to your Library from their own page; any YouTube Music or YouTube link opened from the search field.
 - **3.3 — Grids that fill the screen:** one grid of cards everywhere, with videos at their real size; artist pages with little on them wrap their rows to fill the screen, and "Show More" brings in the rest two rows at a time; a home greeting that changes every ten minutes; a more solid player bar; Turkish and English never mixed.
 - **3.2 — A disk image and a new Library:** install by dragging the app from YT-Music.dmg, no Terminal needed; a Library of chips, tiles or rows and three orders, with every followed artist, album and playlist, and removing from it in the ••• menu; song lengths and release years on artist pages. 3.2.1 turns Picked for you into wide cards you swipe through and puts the notifications newest first.
 - **3.1 — Notifications and crossfade:** a bell with the new singles, albums and uploads of the artists and channels you follow; crossfade from the player bar; playing and pausing ease in and out. 3.1.1 keeps songs playing with YouTube's new player.

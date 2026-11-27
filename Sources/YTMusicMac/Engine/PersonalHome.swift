@@ -253,11 +253,25 @@ enum PersonalHome {
         // Ten: new releases first (seven at most), editors' playlists after them.
         var picks = take(Array(releases.prefix(7)) + Array(editorial.prefix(10)), limit: 10)
         // Each pick's card blends its artist's own picture with the cover. A playlist names
-        // no artist of its own: the artist of its first song stands for it.
-        let artistOf = await Self.pickArtists(engine, picks)
-        let pickPhotos = await engine.channelPhotos(Array(artistOf.values))
+        // no artist of its own: the artists of its first songs stand for it.
+        let artistsOf = await Self.pickArtists(engine, picks)
+        // Each pick's first artist; the next ones only for picks whose first has no picture.
+        var found = await engine.channelPhotos(artistsOf.values.compactMap(\.first))
+        let next = artistsOf.values.filter { ids in
+            guard let first = ids.first else { return false }
+            return found[first] == nil
+        }.flatMap { ids in ids.dropFirst() }
+        if !next.isEmpty {
+            let more = await engine.channelPhotos(Array(next))
+            found.merge(more) { a, _ in a }
+        }
+        let pickPhotos = found
         picks = picks.map { p in
-            guard let id = artistOf[p.uid], let photo = pickPhotos[id] else { return p }
+            // The first of its artists that has a picture.
+            guard let photo = (artistsOf[p.uid] ?? []).compactMap({ id in pickPhotos[id] }).first else {
+                EngineLog.write("Seçim kartı: sanatçı fotoğrafı yok (\(p.title), \(artistsOf[p.uid]?.count ?? 0) aday)")
+                return p
+            }
             var p = p
             p.avatar = photo
             return p
@@ -748,29 +762,37 @@ enum PersonalHome {
         return id.contains("RDTMAK") || id == "LM" || id == "VLLM"
     }
 
-    /// The artist whose picture each pick's card shows, by the pick's uid: its own first
-    /// artist, or for a playlist (no artist page of its own) the first song's first artist.
-    private static func pickArtists(_ engine: YTMusic, _ picks: [MediaItem]) async -> [String: String] {
-        var out: [String: String] = [:]
+    /// The artists whose picture each pick's card may show, by the pick's uid, best first:
+    /// its own artists, or for a playlist (no artist page of its own) the artists of its
+    /// songs in order — several, as some have no picture (or no channel) of their own.
+    private static func pickArtists(_ engine: YTMusic, _ picks: [MediaItem]) async -> [String: [String]] {
+        var out: [String: [String]] = [:]
         var lookups: [(uid: String, browseId: String)] = []
         for p in picks {
-            if let id = p.artists.first?.id, id.hasPrefix("UC") {
-                out[p.uid] = id
-            } else if let b = p.browseId {
-                lookups.append((p.uid, b))
+            let own = p.artists.map(\.id).filter { $0.hasPrefix("UC") }
+            if !own.isEmpty {
+                out[p.uid] = own
+            } else if let b = p.browseId ?? p.playlistId {
+                // A playlist's page is its "VL" id ("RDCLAK…" alone isn't a page).
+                lookups.append((p.uid, b.hasPrefix("RD") || b.hasPrefix("PL") ? "VL" + b : b))
             }
         }
-        let found = await withTaskGroup(of: (String, String?).self) { group in
+        let found = await withTaskGroup(of: (String, [String]).self) { group in
             for l in lookups {
                 group.addTask {
                     let page = try? await engine.browse(l.browseId, params: nil)
-                    let first = page?.sections.flatMap(\.items)
-                        .first { $0.isTrack && $0.artists.first?.id.hasPrefix("UC") == true }
-                    return (l.uid, first?.artists.first?.id)
+                    var ids: [String] = []
+                    for track in (page?.sections ?? []).flatMap(\.items) where track.isTrack {
+                        for a in track.artists where a.id.hasPrefix("UC") && !ids.contains(a.id) {
+                            ids.append(a.id)
+                        }
+                        if ids.count >= 3 { break }
+                    }
+                    return (l.uid, ids)
                 }
             }
-            var ids: [String: String] = [:]
-            for await (uid, id) in group { if let id { ids[uid] = id } }
+            var ids: [String: [String]] = [:]
+            for await (uid, list) in group { if !list.isEmpty { ids[uid] = list } }
             return ids
         }
         out.merge(found) { a, _ in a }

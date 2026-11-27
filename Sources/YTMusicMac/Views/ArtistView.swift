@@ -9,6 +9,8 @@ struct ArtistView: View {
     @ViewState var error: String? = nil
     /// The artist's own square picture (their channel avatar on YouTube).
     @ViewState var photo: String? = nil
+    /// The header's entrance has played (once per visit, not each time it scrolls back).
+    @ViewState var heroShown = false
 
     private var name: String { shown?.header?.title ?? target.title ?? "" }
 
@@ -78,62 +80,94 @@ struct ArtistView: View {
         }
     }
 
-    /// The artist's banner across the top, their own square photo overlapping its lower
-    /// edge with the name beside it (below the banner), like a profile page.
+    /// "Dağılan sahne": the artist's banner on the right, melting leftwards and downwards
+    /// into the page, with a soft wash of its colours across the whole width. On the open
+    /// left, the artist's round photo, their name, the subscribers and the buttons. Without
+    /// a banner, the artist's own colour makes the wash.
     private func hero(_ h: PageHeader?) -> some View {
-        let side = d.v(96, 132)
-        return VStack(alignment: .leading, spacing: 0) {
-            ZStack(alignment: .bottomTrailing) {
-                Artwork(url: h?.thumbnail, cornerRadius: 0, placeholder: "person.fill")
-                    .frame(height: d.heroHeight)
-                    .frame(maxWidth: .infinity)
-                LinearGradient(colors: [.clear, .black.opacity(0.55)], startPoint: .center, endPoint: .bottom)
-                    .allowsHitTesting(false)
-                // Subscribe and radio stay on the banner, where their light style reads.
+        let photoSide = d.v(68, 88)
+        let banner = h?.thumbnail.flatMap { $0.isEmpty ? nil : $0 }
+        return ZStack(alignment: .bottomLeading) {
+            GeometryReader { g in
+                ZStack(alignment: .trailing) {
+                    Group {
+                        if let banner {
+                            Artwork(url: banner, cornerRadius: 0, placeholder: "person.fill")
+                                .frame(width: g.size.width, height: g.size.height)
+                                .clipped()
+                                .blur(radius: 50)
+                                .opacity(0.4)
+                        } else {
+                            HomePalette.color(for: name).opacity(0.3)
+                        }
+                    }
+                    .mask(LinearGradient(colors: [.black, .black.opacity(0.4), .clear], startPoint: .top, endPoint: .bottom))
+                    if let banner {
+                        Artwork(url: banner, cornerRadius: 0, placeholder: "person.fill")
+                            .frame(width: g.size.width * 0.64, height: g.size.height)
+                            .clipped()
+                            .mask(LinearGradient(stops: [.init(color: .clear, location: 0),
+                                                         .init(color: .black.opacity(0.75), location: 0.3),
+                                                         .init(color: .black, location: 0.55)],
+                                                 startPoint: .leading, endPoint: .trailing))
+                            // A long, soft fall-off at the bottom: no line where it ends.
+                            .mask(LinearGradient(stops: [.init(color: .black, location: 0.35),
+                                                         .init(color: .black.opacity(0.55), location: 0.7),
+                                                         .init(color: .clear, location: 1)],
+                                                 startPoint: .top, endPoint: .bottom))
+                            .transition(.opacity)
+                    }
+                }
+                .frame(width: g.size.width, height: g.size.height)
+            }
+            .allowsHitTesting(false)
+            // The banner comes in slowly.
+            .opacity(heroShown ? 1 : 0)
+
+            VStack(alignment: .leading, spacing: 0) {
+                // The round photo beside the name and the subscribers.
+                HStack(alignment: .center, spacing: d.v(14, 18)) {
+                    ArtistPhoto(url: photo, name: name)
+                        .frame(width: photoSide, height: photoSide)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(name)
+                            .font(.system(size: d.heroTitle, weight: .heavy))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.5)
+                        if let subs = h?.subscribers, !subs.isEmpty {
+                            Text(subs)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
                 HStack(spacing: 10) {
+                    PlayCircle(size: d.v(36, 42)) { playShuffle(h) }
                     if let h, h.channelId != nil {
                         SubscribeButton(name: name, header: h)
                     }
                     if let radio = h?.radio {
-                        Button { app.engine.play(endpoint: radio) } label: {
-                            Label(M.t("Radyo", "Radio"), systemImage: "dot.radiowaves.left.and.right")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 14)
-                                .frame(height: 30)
-                                .background(Capsule().fill(.white.opacity(0.2)))
+                        CapsuleButton(title: M.t("Radyo", "Radio"), systemImage: "dot.radiowaves.left.and.right") {
+                            app.engine.play(endpoint: radio)
                         }
-                        .buttonStyle(PressScaleStyle())
                     }
                 }
-                .padding(d.v(14, 20))
+                .padding(.top, d.v(14, 18))
             }
-            .frame(height: d.heroHeight)
-            .clipShape(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 0,
-                                              bottomTrailingRadius: 0, topTrailingRadius: 20, style: .continuous))
-
-            HStack(alignment: .bottom, spacing: d.v(14, 20)) {
-                ArtistPhoto(url: photo, name: name)
-                    .frame(width: side, height: side)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(name)
-                        .font(.system(size: d.heroTitle, weight: .heavy))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.4)
-                    if let subs = h?.subscribers, !subs.isEmpty {
-                        Text(subs)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.bottom, 4)
-                Spacer(minLength: 12)
-                PlayCircle(size: d.v(42, 50)) { playShuffle(h) }
-                    .padding(.bottom, 4)
-            }
-            .padding(.horizontal, d.pad)
-            .padding(.top, -side * 0.45)
+            .padding(.leading, d.pad)
+            .padding(.trailing, d.pad)
+            .padding(.bottom, d.v(18, 28))
+            // The photo, name and buttons float up into place after the banner.
+            .opacity(heroShown ? 1 : 0)
+            .offset(y: heroShown ? 0 : 14)
         }
+        .frame(height: d.heroHeight)
+        .onAppear {
+            guard !heroShown else { return }
+            withAnimation(.smooth(duration: 0.7).delay(0.05)) { heroShown = true }
+        }
+        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 0,
+                                          bottomTrailingRadius: 0, topTrailingRadius: 20, style: .continuous))
     }
 
     private func playShuffle(_ h: PageHeader?) {
@@ -167,7 +201,7 @@ struct ArtistView: View {
     }
 }
 
-/// The artist's square photo on their page; until it comes (or without one), a tile in
+/// The artist's round photo on their page; until it comes (or without one), a circle in
 /// the artist's colour with their initial.
 private struct ArtistPhoto: View {
     let url: String?
@@ -186,10 +220,9 @@ private struct ArtistPhoto: View {
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(.white.opacity(0.18), lineWidth: 1))
-            .shadow(color: .black.opacity(0.3), radius: 12, y: 6)
+            .clipShape(Circle())
+            .overlay(Circle().strokeBorder(.white.opacity(0.22), lineWidth: 1.5))
+            .shadow(color: .black.opacity(0.25), radius: 14, y: 6)
         }
     }
 }
@@ -222,15 +255,17 @@ private struct SubscribeButton: View {
                 }
                 Text(on ? M.t("Abone olundu", "Subscribed") : M.t("Abone ol", "Subscribe"))
                 if !on, let count = header.subscriberShort, !count.isEmpty {
-                    Text(count).opacity(0.55)
+                    Text(count).foregroundStyle(.secondary)
                 }
             }
             .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(on ? Color.white : Color.black)
+            // Quiet like the page's other buttons (Play is the one that stands out); once
+            // subscribed, a soft tint of the accent colour with a tick.
+            .foregroundStyle(Color.brand)
             .padding(.horizontal, 14)
             .frame(height: 30)
             .background(
-                Capsule().fill(on ? Color.white.opacity(hover ? 0.3 : 0.2) : Color.white.opacity(hover ? 0.88 : 1))
+                Capsule().fill(on ? Color.brand.opacity(hover ? 0.22 : 0.15) : Color.primary.opacity(hover ? 0.12 : 0.07))
             )
             .contentShape(Capsule())
         }

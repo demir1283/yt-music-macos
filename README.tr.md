@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Sürüm 3.3.0" src="https://img.shields.io/badge/s%C3%BCr%C3%BCm-3.3.0-ff2d55">
+  <img alt="Sürüm 3.4.0" src="https://img.shields.io/badge/s%C3%BCr%C3%BCm-3.4.0-ff2d55">
   <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-000000?logo=apple">
   <img alt="Swift 5.9" src="https://img.shields.io/badge/Swift-5.9-F05138?logo=swift&logoColor=white">
   <img alt="MIT Lisansı" src="https://img.shields.io/badge/lisans-MIT-3c8dbc">
@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/home.png" alt="Ana sayfa">
+  <img src="docs/screenshots/artist-page.png" alt="Sanatçı sayfası: sayfaya karışan banner, adının yanında sanatçının yuvarlak fotoğrafı, dinlenme sayılarıyla en çok dinlenen şarkılar, yanında şarkı sözleri ve sıra">
 </p>
 
 <p align="center">
@@ -63,11 +63,11 @@ Ana sayfa YouTube Music'in akışı değildir. Her açtığında Mac'inde yenide
 
 <table>
 <tr>
-<td width="75%"><img src="docs/screenshots/artist.png" alt="Sanatçının kendi fotoğrafıyla sanatçı sayfası, yanında şarkı sözleri"></td>
+<td width="75%"><img src="docs/screenshots/home.png" alt="Ana sayfa"></td>
 <td width="25%"><img src="docs/screenshots/notifications.png" alt="Takip ettiğin sanatçılardan yeni müzik"></td>
 </tr>
 <tr>
-<td align="center"><sub>Sanatçının kendi fotoğrafıyla sanatçı sayfaları · müziğin yanında zamanlı şarkı sözleri ve sıra</sub></td>
+<td align="center"><sub>Kendine ait bir ana sayfa · senin için seçilenler, takip ettiğin sanatçılar ve değişen karşılama</sub></td>
 <td align="center"><sub>Takip ettiğin sanatçı ve kanallardan yeni müzik</sub></td>
 </tr>
 </table>
@@ -99,6 +99,7 @@ Ana sayfa YouTube Music'in akışı değildir. Her açtığında Mac'inde yenide
 
 ## Yenilikler
 
+- **3.4 — Yeni sanatçı sayfaları ve kapaklı Ruh Hali ve Türler:** bannerı sayfaya yumuşakça karışan, sanatçının yuvarlak fotoğrafını adının yanında gösteren sanatçı sayfaları; albüm ve çalma listelerinde Dinlenme sütunu; her ruh hali ve tür, kendi renginde, bölgendeki en üst listelerinin kapaklarını taşıyan bir kart; kapağın rengi karta yayılır, üzerine gelince kapaklar deste gibi açılır; albümler, çalma listeleri ve podcast'ler kendi sayfalarından kitaplığa eklenir; her YouTube Music ya da YouTube bağlantısı arama alanından açılır.
 - **3.3 — Ekranı dolduran ızgaralar:** her yerde tek kart ızgarası, videolar gerçek boyutlarında; az içerikli sanatçı sayfaları satırlarını ekranı dolduracak şekilde açar, "Daha Fazla Göster" kalanını ikişer satır getirir; on dakikada bir değişen karşılama cümleleri; daha az saydam çalar çubuğu; Türkçe ve İngilizce artık karışmıyor.
 - **3.2 — Disk görüntüsü ve yeni Kitaplık:** YT-Music.dmg'den uygulamayı sürükleyerek kurulum, Terminal gerekmez; çipler, kutucuk ya da liste görünümü ve üç sıralamayla, takip ettiğin bütün sanatçılar, albümler ve çalma listeleriyle yeni Kitaplık, ••• menüsünden kitaplıktan kaldırma; sanatçı sayfalarında şarkı süreleri ve çıkış yılları. 3.2.1, "Senin için seçildi"yi kaydırarak gezilen geniş kartlara çevirir ve bildirimleri yeniden eskiye sıralar.
 - **3.1 — Bildirimler ve şarkılar arası geçiş:** takip ettiğin sanatçı ve kanalların yeni single, albüm ve yüklemelerini gösteren bir zil; çalar çubuğundan şarkılar arası geçiş; çalma ve duraklatma yumuşakça açılıp kısılır. 3.1.1, YouTube'un yeni oynatıcısıyla şarkıların çalmaya devam etmesini sağlar.

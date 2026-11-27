@@ -154,7 +154,8 @@ final class SearchSuggestionModel {
 /// The toolbar's search field as AppKit sees it. SwiftUI's focus state doesn't follow a
 /// text field placed in the toolbar, so whether it is being typed in is read from AppKit.
 enum SearchField {
-    static let placeholder = M.t("Şarkı, sanatçı, albüm, podcast ara", "Search songs, artists, albums, podcasts")
+    static let placeholder = M.t("Şarkı, sanatçı, podcast ara ya da bağlantı yapıştır",
+                                 "Search songs, artists, podcasts, or paste a link")
 
     /// Whether `object` (a text-editing notification's sender) is the search field: the
     /// one text field outside the window's content, up in the toolbar.

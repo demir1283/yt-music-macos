@@ -24,7 +24,7 @@ struct MediaItem: Codable, Identifiable, Hashable {
     let playlistId: String?
     var artists: [ArtistRef]
     let album: AlbumRef?
-    let duration: String?
+    var duration: String?
     let explicit: Bool
     let play: String?         // raw YouTube Music endpoint JSON used to start playback
     var wide: Bool
@@ -37,6 +37,8 @@ struct MediaItem: Codable, Identifiable, Hashable {
     var avatar: String? = nil
     /// A notification not read yet on YouTube: a dot before the title.
     var unread: Bool? = nil
+    /// How often it was played ("4,3 Mn"), for album and playlist pages' Plays column.
+    var plays: String? = nil
 
     var id: String { uid }
     var isTrack: Bool { videoId != nil }
@@ -139,6 +141,8 @@ struct PageHeader: Codable {
     var privacy: String? = nil
     var playlistId: String? = nil
     var rawDescription: String? = nil
+    /// Albums and others' playlists: kept in the account's library (nil: the page doesn't say).
+    var saved: Bool? = nil
     /// Artist channels: subscription state and what the (un)subscribe calls need.
     var channelId: String? = nil
     var subscribed: Bool? = nil
@@ -235,9 +239,10 @@ struct LibraryData: Codable {
     var playlists: [MediaItem]
     var albums: [MediaItem]
     var artists: [MediaItem]
+    var podcasts: [MediaItem] = []
 
     static let empty = LibraryData(playlists: [], albums: [], artists: [])
-    var isEmpty: Bool { playlists.isEmpty && albums.isEmpty && artists.isEmpty }
+    var isEmpty: Bool { playlists.isEmpty && albums.isEmpty && artists.isEmpty && podcasts.isEmpty }
 
     subscript(list: LibraryFilter) -> [MediaItem] {
         get {
@@ -245,6 +250,7 @@ struct LibraryData: Codable {
             case .playlists: return playlists
             case .albums: return albums
             case .artists: return artists
+            case .podcasts: return podcasts
             }
         }
         set {
@@ -252,6 +258,7 @@ struct LibraryData: Codable {
             case .playlists: playlists = newValue
             case .albums: albums = newValue
             case .artists: artists = newValue
+            case .podcasts: podcasts = newValue
             }
         }
     }

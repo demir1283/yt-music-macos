@@ -3,6 +3,8 @@ import AppKit
 
 struct MainWindow: View {
     @Environment(AppModel.self) private var app
+    /// Only watched: when the menu opens or closes, the covers on Moods & Genres step aside.
+    @ViewState var columns: NavigationSplitViewVisibility = .automatic
     /// One strength for every surface, so the sidebar and side panel look the same.
     static let paneStrength = 0.7
 
@@ -16,7 +18,7 @@ struct MainWindow: View {
             // The side panel is a window column next to the split view (not inside the
             // navigation stack's area), so it gets its own clicks and the content resizes.
             HStack(spacing: 0) {
-                NavigationSplitView {
+                NavigationSplitView(columnVisibility: $columns) {
                     Sidebar()
                         .navigationSplitViewColumnWidth(min: 180, ideal: density.sidebar, max: 300)
                         .background(AmbientField(strength: Self.paneStrength).ignoresSafeArea())
@@ -35,6 +37,7 @@ struct MainWindow: View {
                     // field) carries the moving background; the card above is see-through.
                     .background(AmbientField(strength: Self.paneStrength).ignoresSafeArea())
                 }
+                .onChange(of: columns) { _, _ in app.settleCovers() }
                 .toolbar {
                     ToolbarItem(placement: .navigation) {
                         if !app.path.isEmpty {
@@ -126,8 +129,13 @@ struct ToolbarSearchField: View {
     /// Whether the field is being typed in, read from AppKit (`focused` doesn't follow a
     /// text field in the toolbar).
     @ViewState var editing = false
+    /// A link that couldn't be opened: said in the field's tag until the text changes.
+    @ViewState var linkError: String? = nil
+    @ViewState var openingLink = false
 
     private var active: Bool { focused || editing }
+    /// A YouTube Music or YouTube link pasted in place of words: Enter opens it.
+    private var link: LinkRoute? { LinkRoute.pasted(app.searchQuery) }
 
     var body: some View {
         @Bindable var app = app
@@ -143,9 +151,13 @@ struct ToolbarSearchField: View {
                 .onSubmit {
                     SearchSuggestionModel.shared.dismiss()
                     SearchField.endEditing()
+                    if link != nil { openLink(); return }
                     if app.section != .search { app.select(.search) }
                 }
                 .onExitCommand { focused = false }   // Esc: stop typing, space plays again
+            if let link {
+                linkTag(link)
+            }
             if !app.searchQuery.isEmpty {
                 Button {
                     app.searchQuery = ""
@@ -169,6 +181,13 @@ struct ToolbarSearchField: View {
             // One line only: a line break (⌥↩, ⌃↩ or pasted text) becomes a space.
             if q.contains(where: \.isNewline) {
                 app.searchQuery = q.split(whereSeparator: \.isNewline).joined(separator: " ")
+                return
+            }
+            linkError = nil
+            // A link isn't searched for: Enter opens it.
+            if LinkRoute.pasted(q) != nil {
+                SearchSuggestionModel.shared.dismiss()
+                showSuggestions()
                 return
             }
             if !q.trimmingCharacters(in: .whitespaces).isEmpty && app.section != .search {
@@ -197,6 +216,43 @@ struct ToolbarSearchField: View {
             showSuggestions()
         }
         .onChange(of: SearchSuggestionModel.shared.layoutKey) { _, _ in showSuggestions() }
+    }
+
+    /// What a pasted link opens ("Albüm ↩"), or why it couldn't be opened.
+    private func linkTag(_ link: LinkRoute) -> some View {
+        HStack(spacing: 4) {
+            if openingLink {
+                ProgressView().controlSize(.mini)
+            } else {
+                Image(systemName: linkError == nil ? "link" : "exclamationmark.circle")
+            }
+            Text(linkError ?? link.label).lineLimit(1)
+            if linkError == nil && !openingLink { Image(systemName: "return") }
+        }
+        .font(.system(size: 10.5, weight: .semibold))
+        .foregroundStyle(linkError == nil ? Color.brand : Color.red)
+        .padding(.horizontal, 7)
+        .frame(height: 19)
+        .background(Capsule().fill((linkError == nil ? Color.brand : Color.red).opacity(0.13)))
+        .fixedSize()
+        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+        .help(M.t("Enter: bağlantıyı aç", "Enter: open the link"))
+    }
+
+    /// Enter on a link: plays it or opens its page, then empties the field.
+    private func openLink() {
+        guard !openingLink else { return }
+        let text = app.searchQuery
+        openingLink = true
+        Task {
+            let problem = await app.openLink(text)
+            openingLink = false
+            if let problem {
+                withAnimation(.soft) { linkError = problem }
+            } else if app.searchQuery == text {
+                app.searchQuery = ""
+            }
+        }
     }
 
     /// Opens the suggestion list under the field while you type in it, closes it otherwise.

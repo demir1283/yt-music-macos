@@ -436,3 +436,70 @@ final class CountWordingTests: XCTestCase {
         XCTAssertEqual(M.count(12, "item", "items"), "12 items")
     }
 }
+
+/// Episodes and videos: the date gets a column of its own in place of the empty album one.
+final class TrackColumnTests: XCTestCase {
+    private func episode(_ subtitle: String, album: AlbumRef? = nil) -> MediaItem {
+        MediaItem(uid: subtitle, kind: "episode", title: "e", subtitle: subtitle, thumbnail: nil, videoId: "v\(subtitle.count)",
+                  browseId: nil, params: nil, playlistId: nil, artists: [], album: album, duration: nil,
+                  explicit: false, play: nil, wide: false, color: nil)
+    }
+
+    func testCountAndDateAreSplit() {
+        let parts = PlayCount.split("12 B görüntüleme • 11 Eyl 2025")
+        XCTAssertEqual(parts?.count, "12 B görüntüleme")
+        XCTAssertEqual(parts?.date, "11 Eyl 2025")
+        XCTAssertNil(PlayCount.split("Technopat"))
+    }
+
+    func testThePlayCountLeavesTheArtist() {
+        XCTAssertEqual(PlayCount.without("Justice • 4,3 Mn dinlenme"), "Justice")
+        XCTAssertEqual(PlayCount.without("4,3 Mn dinlenme"), "")
+        XCTAssertEqual(PlayCount.without("Playboi Carti • 2,3 Mn dinlenme"), "Playboi Carti")
+    }
+
+    func testEpisodesGetADateColumn() {
+        let items = [episode("12 B görüntüleme • 11 Eyl 2025"), episode("6,2 B görüntüleme • 20 Eyl 2023")]
+        XCTAssertEqual(ThirdColumn(items), .date)
+    }
+
+    func testListsWithAlbumsKeepTheAlbumColumn() {
+        let items = [episode("12 B görüntüleme • 11 Eyl 2025", album: AlbumRef(name: "A", id: "MPREx"))]
+        XCTAssertEqual(ThirdColumn(items), .album)
+    }
+}
+
+/// Pasted links: where each kind of YouTube Music and YouTube address leads.
+final class LinkRouteTests: XCTestCase {
+    func testSongsAndVideos() {
+        XCTAssertEqual(LinkRoute.parse("https://music.youtube.com/watch?v=dQw4w9WgXcQ&si=abc"),
+                       .watch(videoId: "dQw4w9WgXcQ", list: nil))
+        XCTAssertEqual(LinkRoute.parse("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLabc&t=42"),
+                       .watch(videoId: "dQw4w9WgXcQ", list: "PLabc"))
+        XCTAssertEqual(LinkRoute.parse("youtu.be/dQw4w9WgXcQ?si=x"), .watch(videoId: "dQw4w9WgXcQ", list: nil))
+        XCTAssertEqual(LinkRoute.parse("https://youtube.com/shorts/dQw4w9WgXcQ"), .watch(videoId: "dQw4w9WgXcQ", list: nil))
+        XCTAssertEqual(LinkRoute.parse("  dQw4w9WgXcQ \n"), .watch(videoId: "dQw4w9WgXcQ", list: nil))
+    }
+
+    func testPages() {
+        XCTAssertEqual(LinkRoute.parse("https://music.youtube.com/playlist?list=PLabc"), .playlist("PLabc"))
+        XCTAssertEqual(LinkRoute.parse("https://music.youtube.com/playlist?list=RDCLAK5uy_x"), .mix("RDCLAK5uy_x"))
+        XCTAssertEqual(LinkRoute.parse("https://music.youtube.com/browse/MPREb_abc"), .browse(id: "MPREb_abc", kind: "album"))
+        XCTAssertEqual(LinkRoute.parse("https://music.youtube.com/browse/MPSPPLabc"), .browse(id: "MPSPPLabc", kind: "podcast"))
+        XCTAssertEqual(LinkRoute.parse("https://music.youtube.com/channel/UCabc"), .browse(id: "UCabc", kind: "artist"))
+        XCTAssertEqual(LinkRoute.parse("https://music.youtube.com/search?q=tarkan"), .search("tarkan"))
+    }
+
+    func testOthersAreAskedOfYouTubeOrRefused() {
+        XCTAssertEqual(LinkRoute.parse("https://www.youtube.com/@someone"), .resolve("https://www.youtube.com/@someone"))
+        XCTAssertNil(LinkRoute.parse("https://open.spotify.com/track/abc"))
+        XCTAssertNil(LinkRoute.parse("merhaba dünya"))
+        XCTAssertNil(LinkRoute.parse(""))
+    }
+
+    func testTheSearchFieldTakesOnlyRealLinks() {
+        XCTAssertNil(LinkRoute.pasted("Metallicaaa"))          // 11 letters: a search
+        XCTAssertNil(LinkRoute.pasted("youtube müzik"))
+        XCTAssertEqual(LinkRoute.pasted(" https://youtu.be/dQw4w9WgXcQ "), .watch(videoId: "dQw4w9WgXcQ", list: nil))
+    }
+}

@@ -98,7 +98,11 @@ struct SearchView: View {
         chips.first { Kind.of($0.title) == kind }
     }
 
-    private var query: String { app.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines) }
+    /// What is searched for; a pasted link isn't (Enter opens it).
+    private var query: String {
+        let q = app.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        return LinkRoute.pasted(q) == nil ? q : ""
+    }
     private var searchKey: String { query + "|" + (chip?.params ?? "") + "|\(app.refreshToken)" }
 
     /// A whole overview (the combined results and the per-type shelves), kept in memory

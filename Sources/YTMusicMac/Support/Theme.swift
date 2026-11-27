@@ -444,7 +444,7 @@ struct Density: Equatable {
     var headerArt: CGFloat { v(196, 230) }
     var headerTitle: CGFloat { v(22, 28) }
     var headerStrap: CGFloat { v(17, 22) }
-    var heroHeight: CGFloat { v(210, 340) }
+    var heroHeight: CGFloat { v(230, 370) }
     var heroTitle: CGFloat { v(32, 46) }
     var topResult: CGFloat { v(260, 320) }
 

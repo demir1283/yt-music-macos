@@ -123,6 +123,9 @@ final class YTMusic {
 
     // Library
     private(set) var library = LibraryData.empty
+    /// Albums and playlists just added from the app. YouTube lists them a little later, so
+    /// for a while a reload that lacks them keeps them at the top.
+    @ObservationIgnored private var justAdded: [String: (list: LibraryFilter, item: MediaItem, at: Date)] = [:]
     private(set) var libraryLoading = false
     /// Lists whose later pages are still coming in.
     private(set) var libraryPaging: Set<LibraryFilter> = []
@@ -1295,12 +1298,13 @@ final class YTMusic {
 
     // MARK: - Keeping things in the library
 
-    /// The library list an item belongs in: albums, playlists, followed artists.
+    /// The library list an item belongs in: albums, playlists, followed artists, podcasts.
     private func libraryList(for item: MediaItem) -> LibraryFilter? {
         switch item.kind {
         case "album": return .albums
         case "playlist": return .playlists
         case "artist": return .artists
+        case "podcast": return .podcasts
         default: return nil
         }
     }
@@ -1318,6 +1322,7 @@ final class YTMusic {
         switch list {
         case .albums: return id.hasPrefix("MPRE")
         case .artists: return id.hasPrefix("UC")
+        case .podcasts: return id.hasPrefix("MPSP")
         case .playlists:
             let pid = id.hasPrefix("VL") ? String(id.dropFirst(2)) : id
             guard !pid.isEmpty, pid != "LM", pid != "SE", !pid.hasPrefix("RD") else { return false }
@@ -1328,28 +1333,65 @@ final class YTMusic {
     }
 
     /// Adds the item to the library or takes it out (an artist: subscribe / unsubscribe).
-    /// Taken out, it leaves the list at once; on failure it comes back.
-    func setInLibrary(_ item: MediaItem, _ on: Bool) async {
-        guard let list = libraryList(for: item), let id = item.browseId else { return }
+    /// Taken out, it leaves the list at once; on failure it comes back. Returns whether it worked.
+    @discardableResult
+    func setInLibrary(_ item: MediaItem, _ on: Bool) async -> Bool {
+        guard let list = libraryList(for: item), let id = item.browseId else { return false }
         let place = library[list].firstIndex { $0.browseId == id }
-        if !on { library[list].removeAll { $0.browseId == id } }
+        if !on {
+            library[list].removeAll { $0.browseId == id }
+            justAdded[id] = nil
+        }
         do {
             if list == .artists {
                 try await setSubscribed(on, channelId: id, params: nil)
-                return
+                return true
             }
             _ = try await call("saveToLibrary", ["browseId": id, "playlistId": item.playlistId ?? "",
                                                  "play": item.play ?? "", "on": on], as: Ignored.self)
             EngineLog.write(on ? "Kitaplığa eklendi: \(item.title)" : "Kitaplıktan kaldırıldı: \(item.title)")
             PageCache.shared.markStale { $0.hasPrefix("page|\(id)|") || $0.hasPrefix("home|") }
-            if on { Task { await loadLibraryList(list) } }
+            if on {
+                // In the list at once, then read again once YouTube has caught up.
+                justAdded[id] = (list, item, Date())
+                if !library[list].contains(where: { $0.browseId == id }) {
+                    let sort = librarySorts[list] ?? .recent
+                    library[list] = sort.apply([item] + library[list])
+                }
+                Task {
+                    try? await Task.sleep(nanoseconds: 2_500_000_000)
+                    await loadLibraryList(list)
+                }
+            }
+            return true
         } catch {
             // Back where it was, if it went.
             if !on, let place, !library[list].contains(where: { $0.browseId == id }) {
                 library[list].insert(item, at: min(place, library[list].count))
             }
             EngineLog.write("Kitaplık değişmedi (\(item.title)): \(error.localizedDescription)")
+            return false
         }
+    }
+
+    /// Where a YouTube link the app doesn't read itself leads (handles, podcast addresses).
+    func resolveLink(_ url: String) async -> LinkRoute? {
+        do {
+            return try await call("resolveLink", ["url": url], as: ResolvedLink.self).route
+        } catch {
+            EngineLog.write("Bağlantı çözülemedi (\(url)): \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// Play counts a playlist's page left out, read from the same list on YouTube.
+    func playCounts(playlistId: String, videoIds: [String]) async -> [String: String] {
+        (try? await call("playCounts", ["playlistId": playlistId, "videoIds": videoIds], as: [String: String].self)) ?? [:]
+    }
+
+    /// Lengths a list's page left out (podcast episodes), read from its play queue.
+    func lengths(playlistId: String, videoIds: [String]) async -> [String: String] {
+        (try? await call("lengths", ["playlistId": playlistId, "videoIds": videoIds], as: [String: String].self)) ?? [:]
     }
 
     func removeFromPlaylist(_ playlistId: String, videoId: String, setVideoId: String) async throws {
@@ -1620,9 +1662,32 @@ final class YTMusic {
     /// kept in memory while the app runs. Channels without one are left out.
     func channelPhotos(_ ids: [String]) async -> [String: String] {
         let missing = Array(Set(ids.filter { $0.hasPrefix("UC") && channelPhotoCache[$0] == nil }))
-        if !missing.isEmpty,
-           let found = try? await call("channelPhotos", ["ids": missing], as: [String: String?].self) {
-            for id in missing { channelPhotoCache[id] = (found[id] ?? nil) ?? "" }
+        // The script reads 30 channels per call: the rest in further calls, side by side.
+        let batches = stride(from: 0, to: missing.count, by: 30).map { Array(missing[$0..<min($0 + 30, missing.count)]) }
+        let results = await withTaskGroup(of: [String: String?].self) { group in
+            for batch in batches {
+                group.addTask {
+                    do {
+                        return try await self.call("channelPhotos", ["ids": batch], as: [String: String?].self)
+                    } catch {
+                        EngineLog.write("Kanal fotoğrafları alınamadı (\(batch.count)): \(error.localizedDescription)")
+                        return [:]
+                    }
+                }
+            }
+            var all: [[String: String?]] = []
+            for await r in group { all.append(r) }
+            return all
+        }
+        // Only the channels actually read are kept ("" for one without a picture); one
+        // left out (a request that failed, or past the 30) is asked again next time.
+        for found in results {
+            for (id, url) in found { channelPhotoCache[id] = url ?? "" }
+        }
+        if !missing.isEmpty {
+            let read = results.reduce(0) { $0 + $1.count }
+            let pictures = results.reduce(0) { $0 + $1.values.filter { $0 != nil }.count }
+            EngineLog.write("Kanal fotoğrafları: \(missing.count) istendi, \(read) okundu, \(pictures) fotoğraf")
         }
         return ids.reduce(into: [:]) { out, id in
             if let url = channelPhotoCache[id], !url.isEmpty { out[id] = url }
@@ -1727,7 +1792,15 @@ final class YTMusic {
                                           as: LibraryPage.self),
               libraryRuns[list] == run else { return }
         var seen = Set<String>()
-        let items = first.items.filter { seen.insert($0.browseId ?? $0.uid).inserted }
+        var items = first.items.filter { list.keeps($0) && seen.insert($0.browseId ?? $0.uid).inserted }
+        // Just added here but not listed by YouTube yet: kept at the top for two minutes.
+        justAdded = justAdded.filter { Date().timeIntervalSince($0.value.at) < 120 }
+        let waiting = justAdded.values.filter { $0.list == list && !seen.contains($0.item.browseId ?? "") }
+            .sorted { $0.at > $1.at }.map(\.item)
+        if !items.isEmpty, !waiting.isEmpty {
+            for w in waiting { seen.insert(w.browseId ?? w.uid) }
+            items = waiting + items
+        }
         // An empty answer for a list that had things is YouTube's hiccup, not an empty library:
         // what is shown stays.
         if items.isEmpty, !library[list].isEmpty {
@@ -1755,7 +1828,7 @@ final class YTMusic {
         while pages < 40, !Task.isCancelled {
             guard let more = try? await call("more", ["token": token], as: MoreResult.self),
                   libraryRuns[list] == run else { return }
-            let fresh = more.items.filter { $0.browseId != nil && seen.insert($0.browseId ?? $0.uid).inserted }
+            let fresh = more.items.filter { $0.browseId != nil && list.keeps($0) && seen.insert($0.browseId ?? $0.uid).inserted }
             pages += 1
             if !fresh.isEmpty {
                 items += fresh

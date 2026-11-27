@@ -413,17 +413,31 @@ private struct SkelHero: View {
     @Environment(\.density) private var d
 
     var body: some View {
+        // Mirrors the artist page's header: the banner on the right, the round photo, the
+        // name and the buttons on the left.
         ZStack(alignment: .bottomLeading) {
-            Rectangle()
-            HStack(alignment: .bottom, spacing: 16) {
-                Circle().frame(width: d.v(42, 50), height: d.v(42, 50))
-                VStack(alignment: .leading, spacing: 8) {
-                    Bar(width: 280, height: d.heroTitle * 0.8, radius: 8)
-                    Bar(width: 120, height: 10)
+            GeometryReader { g in
+                Rectangle()
+                    .frame(width: g.size.width * 0.64)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .mask(LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .center))
+            }
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: d.v(14, 18)) {
+                    Circle().frame(width: d.v(68, 88), height: d.v(68, 88))
+                    VStack(alignment: .leading, spacing: 8) {
+                        Bar(width: 260, height: d.heroTitle * 0.8, radius: 8)
+                        Bar(width: 120, height: 10)
+                    }
+                }
+                HStack(spacing: 10) {
+                    Circle().frame(width: d.v(36, 42), height: d.v(36, 42))
+                    Bar(width: 110, height: 30, radius: 15)
                 }
             }
             .opacity(0.9)
-            .padding(d.v(16, 24))
+            .padding(.leading, d.pad)
+            .padding(.bottom, d.v(18, 28))
         }
         .frame(height: d.heroHeight)
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 20, bottomLeadingRadius: 0,

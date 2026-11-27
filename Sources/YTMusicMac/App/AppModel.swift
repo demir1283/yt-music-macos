@@ -89,13 +89,14 @@ enum PanelMode: Hashable {
 }
 
 enum LibraryFilter: String, CaseIterable, Identifiable {
-    case playlists, albums, artists
+    case playlists, albums, artists, podcasts
     var id: String { rawValue }
     var title: String {
         switch self {
         case .playlists: return M.t("Çalma Listeleri", "Playlists")
         case .albums: return M.t("Albümler", "Albums")
         case .artists: return M.t("Sanatçılar", "Artists")
+        case .podcasts: return M.t("Podcast'ler", "Podcasts")
         }
     }
     /// The YouTube Music page the list comes from.
@@ -105,7 +106,13 @@ enum LibraryFilter: String, CaseIterable, Identifiable {
         case .albums: return "FEmusic_liked_albums"
         // The artists followed, not everyone with a song in the library.
         case .artists: return "FEmusic_library_corpus_artists"
+        case .podcasts: return "FEmusic_library_non_music_audio_list"
         }
+    }
+    /// What the list shows of its page: the podcasts list also holds YouTube's own
+    /// "New episodes" list, which isn't a saved show.
+    func keeps(_ item: MediaItem) -> Bool {
+        self != .podcasts || (item.browseId?.hasPrefix("MPSP") ?? false)
     }
 }
 
@@ -345,7 +352,9 @@ final class AppModel {
             let vid = String(id.dropFirst(4))
             engine.play(endpoint: item.play ?? watchEndpoint(videoId: vid, playlistId: nil), context: nil)
         } else if let id = item.browseId {
-            push(BrowseTarget(browseId: id, params: item.params, kind: item.kind, title: item.title))
+            // A podcast keeps its card's cover: some show pages come without one.
+            push(BrowseTarget(browseId: id, params: item.params, kind: item.kind, title: item.title,
+                              cover: item.kind == "podcast" ? item.thumbnail : nil))
         } else if item.isTrack {
             play(item)
         }
@@ -382,6 +391,7 @@ final class AppModel {
 
     func toggleLyrics() {
         guard LyricsCenter.shared.available(for: engine.track?.videoId) else { return }
+        if !panelVisible { settleCovers() }
         withAnimation(.spring(response: 0.45, dampingFraction: 0.88)) {
             if !panelVisible {
                 panelVisible = true
@@ -407,8 +417,55 @@ final class AppModel {
         Inbox.shared.markSeen()
     }
 
+    /// Opens a pasted YouTube Music or YouTube link: plays a song, video or mix, or opens a
+    /// playlist, album, artist or podcast page. Returns what went wrong, or nil.
+    func openLink(_ text: String) async -> String? {
+        guard var route = LinkRoute.parse(text) else {
+            return M.t("Bu bir YouTube Music ya da YouTube bağlantısı değil", "That isn't a YouTube Music or YouTube link")
+        }
+        if case .resolve(let url) = route {
+            guard let found = await engine.resolveLink(url) else {
+                return M.t("YouTube bu bağlantıyı açamadı", "YouTube couldn't open this link")
+            }
+            route = found
+        }
+        EngineLog.write("Bağlantı açıldı: \(route)")
+        switch route {
+        case .watch(let v, let list):
+            engine.play(endpoint: watchEndpoint(videoId: v, playlistId: list))
+        case .mix(let id):
+            engine.play(endpoint: watchPlaylistEndpoint(id))
+        case .playlist(let id):
+            push(BrowseTarget(browseId: "VL" + id, params: nil, kind: "playlist", title: nil))
+        case .browse(let id, let kind):
+            push(BrowseTarget(browseId: id, params: nil, kind: kind, title: nil))
+        case .search(let q):
+            searchQuery = q
+            select(.search)
+        case .resolve:
+            return M.t("YouTube bu bağlantıyı açamadı", "YouTube couldn't open this link")
+        }
+        return nil
+    }
+
     func togglePanel() {
+        settleCovers()
         withAnimation(.spring(response: 0.45, dampingFraction: 0.88)) { panelVisible.toggle() }
+    }
+
+    /// While a panel moves, the covers on Moods & Genres step aside; once the cards are in
+    /// their new places they come back and fan out once, like a hand of cards.
+    private(set) var layoutSettling = false
+    @ObservationIgnored private var settleTask: Task<Void, Never>?
+
+    func settleCovers() {
+        layoutSettling = true
+        settleTask?.cancel()
+        settleTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 650_000_000)
+            guard !Task.isCancelled else { return }
+            self?.layoutSettling = false
+        }
     }
 
     var isPanelVisible: Bool {

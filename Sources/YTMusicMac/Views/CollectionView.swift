@@ -13,9 +13,19 @@ struct CollectionView: View {
     @ViewState var loadingMore = false
     @ViewState var error: String? = nil
     @ViewState var actionError: String? = nil
+    /// The library state just chosen with the button, until the page is read again.
+    @ViewState var savedChoice: Bool? = nil
+    @ViewState var saving = false
+    /// Lengths found for episodes their page left without one, and the ones already asked for.
+    @ViewState var foundLengths: [String: String] = [:]
+    @ViewState var askedLengths: Set<String> = []
+    /// The same for play counts (playlists' pages have none).
+    @ViewState var foundPlays: [String: String] = [:]
+    @ViewState var askedPlays: Set<String> = []
 
     private var isAlbum: Bool { target.kind == "album" }
     private var isMix: Bool { target.kind == "mix" }
+    private var isPodcast: Bool { target.kind == "podcast" }
 
     /// Checks again on ⌘R and when the app comes back to the screen.
     private var taskKey: String {
@@ -26,6 +36,8 @@ struct CollectionView: View {
 
     private var contextPlaylist: String? {
         if target.browseId.hasPrefix("VL") { return String(target.browseId.dropFirst(2)) }
+        // A podcast ("MPSP" + the playlist of its episodes).
+        if target.browseId.hasPrefix("MPSP") { return String(target.browseId.dropFirst(4)) }
         return playlistId(inEndpoint: page?.header?.play) ?? tracks.first?.playlistId
     }
 
@@ -172,7 +184,8 @@ struct CollectionView: View {
                 } else if let artist = target.coverArtist, !artist.isEmpty {
                     ArtistListCover(artist: artist, label: M.t("Popüler şarkılar", "Top songs"))
                 } else {
-                    Artwork(url: page?.header?.thumbnail.flatMap { $0.isEmpty ? nil : $0 }, cornerRadius: 10, placeholder: "music.note.list")
+                    Artwork(url: page?.header?.thumbnail.flatMap { $0.isEmpty ? nil : $0 } ?? target.cover,
+                            cornerRadius: 10, placeholder: "music.note.list")
                 }
             }
             .frame(width: d.headerArt, height: d.headerArt)
@@ -216,6 +229,17 @@ struct CollectionView: View {
                     if ownedPlaylistId != nil {
                         CapsuleButton(title: M.t("Düzenle", "Edit"), systemImage: "pencil") { editPlaylist() }
                     }
+                    if let item = libraryItem {
+                        let kept = isSaved(item)
+                        CapsuleButton(title: kept ? M.t("Kitaplıkta", "In Library") : M.t("Kitaplığa Ekle", "Add to Library"),
+                                      systemImage: kept ? "checkmark" : "plus") {
+                            setSaved(item, !kept)
+                        }
+                        .help(kept ? M.t("Kitaplıktan kaldır", "Remove from Library")
+                                   : M.t("Kitaplığına kaydet", "Save to your Library"))
+                        .disabled(saving)
+                        .animation(.soft, value: kept)
+                    }
                     if let p = page?.header?.privacy.flatMap(PlaylistPrivacy.init(rawValue:)) {
                         Label(p.title, systemImage: p.icon)
                             .font(.system(size: 11.5, weight: .medium))
@@ -245,6 +269,52 @@ struct CollectionView: View {
 
     private var extraSections: [Shelf] {
         (page?.sections ?? []).filter { $0.id != trackSectionID && $0.layout != "top" }
+    }
+
+    // MARK: Library
+
+    /// This album or someone else's playlist, as the library keeps it; nil where the page
+    /// can't be kept (mixes, the account's own playlists, Beğenilen müzikler, signed out).
+    private var libraryItem: MediaItem? {
+        guard app.engine.loggedIn, ["album", "playlist", "podcast"].contains(target.kind),
+              !isMix, !isLiked, target.coverArtist == nil,
+              let h = page?.header, h.editable != true else { return nil }
+        let id = target.browseId
+        if isAlbum {
+            guard id.hasPrefix("MPRE") else { return nil }
+        } else if isPodcast {
+            guard id.hasPrefix("MPSP") else { return nil }
+        } else {
+            let pid = id.hasPrefix("VL") ? String(id.dropFirst(2)) : id
+            guard id.hasPrefix("VL"), !pid.isEmpty, pid != "LM", pid != "SE", !pid.hasPrefix("RD") else { return nil }
+        }
+        // Written as the library's own cards are: who made it, and an album's year.
+        let year = h.subtitle.components(separatedBy: " • ").last { $0.count == 4 && Int($0) != nil }
+        let by = h.strapline.isEmpty ? h.subtitle : h.strapline
+        let subtitle = isAlbum ? [by, year].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " • ") : by
+        return MediaItem(uid: "page-\(id)", kind: isAlbum ? "album" : (isPodcast ? "podcast" : "playlist"), title: title,
+                         subtitle: subtitle, thumbnail: h.thumbnail ?? target.cover, videoId: nil, browseId: id, params: nil,
+                         playlistId: isAlbum ? playlistId(inEndpoint: h.play) : nil, artists: h.artists,
+                         album: nil, duration: nil, explicit: false, play: h.play, wide: false, color: nil)
+    }
+
+    private func isSaved(_ item: MediaItem) -> Bool {
+        savedChoice ?? page?.header?.saved ?? app.engine.inLibrary(item)
+    }
+
+    private func setSaved(_ item: MediaItem, _ on: Bool) {
+        actionError = nil
+        saving = true
+        withAnimation(.soft) { savedChoice = on }
+        Task {
+            let ok = await app.engine.setInLibrary(item, on)
+            saving = false
+            if !ok {
+                withAnimation(.soft) { savedChoice = !on }
+                actionError = on ? M.t("Kitaplığa eklenemedi. Yeniden dene.", "Couldn't add to your Library. Try again.")
+                                 : M.t("Kitaplıktan kaldırılamadı. Yeniden dene.", "Couldn't remove from your Library. Try again.")
+            }
+        }
     }
 
     // MARK: Actions
@@ -302,6 +372,62 @@ struct CollectionView: View {
         tracks = (main?.items ?? []).filter(\.isTrack)
         continuation = main?.continuation
         page = p
+        fillArtists()
+        fillLengths()
+        fillPlays()
+    }
+
+    /// An album's own songs name no artist (only "4,3 Mn dinlenme"): the album's artists.
+    private func fillArtists() {
+        guard isAlbum, let artists = page?.header?.artists, !artists.isEmpty else { return }
+        for i in tracks.indices where tracks[i].artists.isEmpty && PlayCount.without(tracks[i].subtitle).isEmpty {
+            tracks[i].artists = artists
+        }
+    }
+
+    /// Play counts the page left out (playlists), from the same list on YouTube. Asked once
+    /// per song; what is found stays for reloads.
+    private func fillPlays() {
+        for i in tracks.indices where tracks[i].plays == nil {
+            if let v = tracks[i].videoId, let n = foundPlays[v] { tracks[i].plays = n }
+        }
+        guard !isMix, !isPodcast, let list = contextPlaylist, list != "LM", list != "SE" else { return }
+        let missing = tracks.filter { $0.plays == nil }.compactMap(\.videoId).filter { !askedPlays.contains($0) }
+        guard !missing.isEmpty else { return }
+        askedPlays.formUnion(missing)
+        Task {
+            let found = await app.engine.playCounts(playlistId: list, videoIds: missing)
+            guard !found.isEmpty else { return }
+            foundPlays.merge(found) { old, _ in old }
+            withAnimation(.soft) {
+                for i in tracks.indices where tracks[i].plays == nil {
+                    if let v = tracks[i].videoId, let n = found[v] { tracks[i].plays = n }
+                }
+            }
+        }
+    }
+
+    /// Episodes come without their lengths: the list's play queue has them. Asked once per
+    /// episode; what is found stays for reloads.
+    private func fillLengths() {
+        for i in tracks.indices where tracks[i].duration?.isEmpty != false {
+            if let v = tracks[i].videoId, let l = foundLengths[v] { tracks[i].duration = l }
+        }
+        guard !isMix, let list = contextPlaylist else { return }
+        let missing = tracks.filter { $0.duration?.isEmpty != false }.compactMap(\.videoId)
+            .filter { !askedLengths.contains($0) }
+        guard !missing.isEmpty else { return }
+        askedLengths.formUnion(missing)
+        Task {
+            let found = await app.engine.lengths(playlistId: list, videoIds: missing)
+            guard !found.isEmpty else { return }
+            foundLengths.merge(found) { old, _ in old }
+            withAnimation(.soft) {
+                for i in tracks.indices where tracks[i].duration?.isEmpty != false {
+                    if let v = tracks[i].videoId, let l = found[v] { tracks[i].duration = l }
+                }
+            }
+        }
     }
 
     private func loadMore() {
@@ -313,6 +439,9 @@ struct CollectionView: View {
                 let known = Set(tracks.map(\.id))
                 tracks.append(contentsOf: r.items.filter { $0.isTrack && !known.contains($0.id) })
                 continuation = r.continuation == token ? nil : r.continuation
+                fillArtists()
+                fillLengths()
+                fillPlays()
             } else {
                 continuation = nil
             }

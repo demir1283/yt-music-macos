@@ -489,19 +489,39 @@ private struct TrackListRows: View {
     let context: String?
     let onReachEnd: (() -> Void)?
     @ViewState var width: CGFloat = 900
+    /// On an artist's own page: their name, left out of the Artist column.
+    @Environment(\.pageArtist) private var pageArtist
 
     var body: some View {
-        let albumColumn = showAlbum && width > 700
+        // On the artist's page the Artist column names only the others (features); with
+        // none in the list, it goes.
+        let leaveOut = pageArtist.flatMap { $0.isEmpty ? nil : $0 }
+        let artistColumn = leaveOut.map { name in
+            items.contains { item in item.artists.contains { !Self.same($0.name, name) } }
+        } ?? true
+        // The third column: the songs' albums; for episodes and videos, which have none,
+        // the date they came out (taken out of "12 B görüntüleme • 11 Eyl 2025"); else none.
+        let third = showAlbum && width > 700 ? ThirdColumn(items) : .hidden
         let time = TimeColumn(items)
+        // Albums and playlists: how often each song was played, in a column of its own.
+        let plays = third != .date && width > 640 && items.contains { $0.isTrack && $0.plays != nil }
+        // Room for an hour ("3:26:23", long episodes) when a row needs it.
+        let timeWidth: CGFloat = items.contains { item in
+            (item.duration ?? "").filter { $0 == ":" }.count >= 2
+        } ? 62 : 48
         VStack(spacing: 0) {
             if showHeader {
-                TrackListHeader(numbered: numbered, showArtwork: showArtwork, showAlbum: albumColumn,
-                                secondTitle: Self.secondColumnTitle(items), time: time)
+                TrackListHeader(numbered: numbered, showArtwork: showArtwork, third: third,
+                                secondTitle: plays ? M.t("Sanatçı", "Artist") : Self.secondColumnTitle(items),
+                                showSecond: artistColumn,
+                                plays: plays, time: time, timeWidth: timeWidth)
             }
             LazyVStack(spacing: 0) {
                 ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
                     TrackRow(item: item, index: numbered ? i + 1 : nil, showArtwork: showArtwork,
-                             showAlbum: albumColumn, showTime: time != .hidden, striped: i % 2 == 0, context: context)
+                             showSecond: artistColumn, leaveOutArtist: leaveOut,
+                             showAlbum: third == .album, showDate: third == .date, showPlays: plays,
+                             showTime: time != .hidden, timeWidth: timeWidth, striped: i % 2 == 0, context: context)
                         .onAppear { if i >= items.count - 4 { onReachEnd?() } }
                 }
             }
@@ -509,16 +529,62 @@ private struct TrackListRows: View {
         .background(GeometryReader { g in Color.clear.onAppear { width = g.size.width }.onChange(of: g.size.width) { _, w in width = w } })
     }
 
+    static func same(_ a: String, _ b: String) -> Bool { TrackListRowsNames.same(a, b) }
+
     /// Album pages list play counts ("28 Mn dinlenme") where other lists show artists.
     static func secondColumnTitle(_ items: [MediaItem]) -> String {
         let tracks = items.filter(\.isTrack)
         guard !tracks.isEmpty, tracks.allSatisfy({ $0.artists.isEmpty }) else { return M.t("Sanatçı", "Artist") }
-        let words = ["dinlenme", "plays", "play", "görüntüleme", "views"]
-        let counts = tracks.filter { t in
-            let s = t.subtitle.lowercased()
-            return words.contains { s.contains($0) }
-        }
+        let counts = tracks.filter { PlayCount.isCount($0.subtitle) }
         return counts.count * 2 >= tracks.count ? M.t("Dinlenme", "Plays") : M.t("Sanatçı", "Artist")
+    }
+}
+
+/// Artist names compared as people read them (case and accents aside).
+enum TrackListRowsNames {
+    static func same(_ a: String, _ b: String) -> Bool {
+        a.compare(b, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+    }
+}
+
+/// A row's play count and the rest of its subtitle: "12 B görüntüleme • 11 Eyl 2025" →
+/// ("12 B görüntüleme", "11 Eyl 2025").
+enum PlayCount {
+    static let words = ["dinlenme", "plays", "play", "görüntüleme", "izlenme", "views", "view"]
+    static let columnWidth: CGFloat = 92
+
+    /// A count needs its number too ("Playboi Carti" isn't one).
+    static func isCount(_ text: String) -> Bool {
+        let s = text.lowercased()
+        return s.contains(where: \.isNumber) && words.contains { s.contains($0) }
+    }
+
+    /// The subtitle without its play count: "Justice • 4,3 Mn dinlenme" → "Justice".
+    static func without(_ subtitle: String) -> String {
+        subtitle.components(separatedBy: " • ").filter { !$0.isEmpty && !isCount($0) }.joined(separator: " • ")
+    }
+
+    static func split(_ subtitle: String) -> (count: String, date: String)? {
+        let parts = subtitle.components(separatedBy: " • ").filter { !$0.isEmpty }
+        guard parts.count >= 2, let i = parts.firstIndex(where: isCount) else { return nil }
+        let rest = parts.enumerated().filter { $0.offset != i }.map(\.element)
+        return (parts[i], rest.joined(separator: " • "))
+    }
+}
+
+/// What a list's third column holds.
+enum ThirdColumn {
+    case album, date, hidden
+
+    init(_ items: [MediaItem]) {
+        let tracks = items.filter(\.isTrack)
+        if tracks.isEmpty || tracks.contains(where: { $0.album != nil }) {
+            self = .album
+        } else if tracks.filter({ $0.artists.isEmpty && PlayCount.split($0.subtitle) != nil }).count * 2 >= tracks.count {
+            self = .date
+        } else {
+            self = .hidden
+        }
     }
 }
 
@@ -538,9 +604,12 @@ enum TimeColumn {
 struct TrackListHeader: View {
     let numbered: Bool
     let showArtwork: Bool
-    let showAlbum: Bool
+    var third = ThirdColumn.album
     var secondTitle = M.t("Sanatçı", "Artist")
+    var showSecond = true
+    var plays = false
     var time = TimeColumn.duration
+    var timeWidth: CGFloat = 48
     @Environment(\.density) private var d
 
     var body: some View {
@@ -553,18 +622,36 @@ struct TrackListHeader: View {
                 if showArtwork {
                     Color.clear.frame(width: d.trackArt, height: 1)
                 }
-                Text(M.t("Başlık", "Title")).frame(maxWidth: .infinity, alignment: .leading)
-                Text(secondTitle).frame(maxWidth: .infinity, alignment: .leading)
-                if showAlbum {
-                    Text(M.t("Albüm", "Album")).frame(maxWidth: .infinity, alignment: .leading)
+                ColumnTitle(M.t("Başlık", "Title"), icon: "music.note")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if showSecond {
+                    ColumnTitle(secondTitle, icon: secondTitle == M.t("Dinlenme", "Plays") ? "headphones" : "music.mic")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                switch third {
+                case .album:
+                    ColumnTitle(M.t("Albüm", "Album"), icon: "opticaldisc")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                case .date:
+                    ColumnTitle(M.t("Yayın Tarihi", "Published"), icon: "calendar")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                case .hidden:
+                    EmptyView()
+                }
+                if plays {
+                    ColumnTitle(M.t("Dinlenme", "Plays"), icon: "headphones")
+                        .frame(width: PlayCount.columnWidth, alignment: .leading)
                 }
                 switch time {
                 case .duration:
                     Image(systemName: "clock")
-                        .frame(width: 48, alignment: .trailing)
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(Color.brand.opacity(0.85))
+                        .help(M.t("Süre", "Length"))
+                        .frame(width: timeWidth, alignment: .trailing)
                 case .year:
-                    Text(M.t("Yıl", "Year"))
-                        .frame(width: 48, alignment: .trailing)
+                    ColumnTitle(M.t("Yıl", "Year"), icon: "calendar")
+                        .frame(width: timeWidth, alignment: .trailing)
                 case .hidden:
                     EmptyView()
                 }
@@ -580,13 +667,44 @@ struct TrackListHeader: View {
     }
 }
 
+/// A column's name with a small icon before it, in the accent colour as the left menu's.
+private struct ColumnTitle: View {
+    let title: String
+    let icon: String
+
+    init(_ title: String, icon: String) {
+        self.title = title
+        self.icon = icon
+    }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .semibold))
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(Color.brand.opacity(0.85))
+            Text(title)
+        }
+        .lineLimit(1)
+    }
+}
+
 struct TrackRow: View {
     let item: MediaItem
     var index: Int?
     var showArtwork = true
+    /// The Artist column (gone on an artist's page whose songs are all theirs).
+    var showSecond = true
+    /// On an artist's page: their own name, left out of the Artist column.
+    var leaveOutArtist: String? = nil
     var showAlbum = true
+    /// Episodes and videos: their date in a column of its own, out of the subtitle.
+    var showDate = false
+    /// Albums and playlists: the play count in a column of its own, out of the subtitle.
+    var showPlays = false
     /// The last column: the length, or the year of a release without one.
     var showTime = true
+    var timeWidth: CGFloat = 48
     var striped = false
     var context: String?
 
@@ -595,6 +713,10 @@ struct TrackRow: View {
     @Environment(\.density) private var d
 
     private var isCurrent: Bool { item.videoId != nil && app.engine.track?.videoId == item.videoId }
+    /// The play count and the date, when the date has its own column.
+    private var dated: (count: String, date: String)? {
+        showDate && item.artists.isEmpty ? PlayCount.split(item.subtitle) : nil
+    }
 
     /// Said "don't recommend" / disliked: the song stays in its list, faded and marked, and
     /// is left out when the list plays (unless clicked itself).
@@ -640,17 +762,27 @@ struct TrackRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Group {
-                if item.isTrack {
-                    ArtistByline(artists: item.artists, fallback: item.subtitle, font: .system(size: 13))
-                } else {
-                    Text(item.subtitle.isEmpty ? item.typeLabel : item.subtitle)
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+            if showSecond {
+                Group {
+                    if item.isTrack, let name = leaveOutArtist {
+                        // The artist's own page: the others on the song; a song of their own
+                        // alone keeps their name, so no row is left empty.
+                        let others = item.artists.filter { !TrackListRowsNames.same($0.name, name) }
+                        ArtistByline(artists: others.isEmpty ? item.artists : others,
+                                     fallback: PlayCount.without(item.subtitle), font: .system(size: 13))
+                    } else if item.isTrack {
+                        ArtistByline(artists: item.artists,
+                                     fallback: dated?.count ?? (showPlays ? PlayCount.without(item.subtitle) : item.subtitle),
+                                     font: .system(size: 13))
+                    } else {
+                        Text(item.subtitle.isEmpty ? item.typeLabel : item.subtitle)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
 
             if showAlbum {
                 Group {
@@ -663,11 +795,30 @@ struct TrackRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
+            if showDate {
+                Text(dated?.date ?? "")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if showPlays {
+                Text(item.plays ?? "")
+                    .font(.system(size: 12.5).monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .contentTransition(.opacity)
+                    .frame(width: PlayCount.columnWidth, alignment: .leading)
+            }
+
             if showTime {
                 Text(item.duration ?? item.releaseYear ?? "")
                     .font(.system(size: 12).monospacedDigit())
                     .foregroundStyle(.secondary)
-                    .frame(width: 48, alignment: .trailing)
+                    .lineLimit(1)
+                    .contentTransition(.opacity)
+                    .frame(width: timeWidth, alignment: .trailing)
             }
 
             Menu {
@@ -759,6 +910,10 @@ struct CategoryTile: View {
     @Environment(AppModel.self) private var app
     @ViewState var hover = false
     @ViewState var cover: CategoryCover? = nil
+    /// The covers stepped aside while a panel moves (AppModel.layoutSettling).
+    @ViewState var away = false
+    /// Back in place: the hand opens once, then closes to its resting peek.
+    @ViewState var dealing = false
     @Environment(\.density) private var d
 
     static func minWidth(_ d: Density) -> CGFloat { d.v(180, 210) }
@@ -774,29 +929,33 @@ struct CategoryTile: View {
                 LinearGradient(colors: [color, color.scaledBrightness(0.72)],
                                startPoint: .topLeading, endPoint: .bottomTrailing)
                 // The cover's colour, spreading from under it into the card's.
-                if let tint = cover?.tint {
+                if let tint = cover?.tint, !away {
                     RadialGradient(colors: [tint.opacity(0.95), tint.opacity(0.45), tint.opacity(0)],
                                    center: UnitPoint(x: center.x / max(g.size.width, 1), y: center.y / max(g.size.height, 1)),
                                    startRadius: side * 0.2, endRadius: g.size.width * 0.72)
                 }
                 if let cover {
                     // The next lists peek out from behind the first; on hover they fan out to
-                    // the left like a hand of cards.
+                    // the left like a hand of cards. Stepped aside, they gather under it.
+                    let fanned = (hover || dealing) && !away
                     ForEach(Array(cover.more.enumerated().reversed()), id: \.element) { i, url in
                         let step = CGFloat(i + 1)
+                        let spread: CGFloat = away ? 0 : (fanned ? 0.38 : 0.11)
                         Artwork(url: url, cornerRadius: 7, placeholder: "music.note.list")
                             .frame(width: side * 0.9, height: side * 0.9)
-                            .shadow(color: .black.opacity(hover ? 0.35 : 0.25), radius: hover ? 10 : 6, x: -2, y: 3)
-                            .rotationEffect(.degrees(hover ? 24 - 11 * Double(step) : 24 - 5 * Double(step)))
-                            .position(x: center.x - side * (hover ? 0.38 : 0.11) * step,
-                                      y: center.y + side * (hover ? 0.04 : 0.02) * step)
+                            .shadow(color: .black.opacity(fanned ? 0.35 : 0.25), radius: fanned ? 10 : 6, x: -2, y: 3)
+                            .rotationEffect(.degrees(away ? 24 : (fanned ? 24 - 11 * Double(step) : 24 - 5 * Double(step))))
+                            .position(x: center.x - side * spread * step,
+                                      y: center.y + side * (fanned ? 0.04 : 0.02) * step)
+                            .opacity(away ? 0 : 1)
                     }
                     Artwork(url: cover.url, cornerRadius: 7, placeholder: "music.note.list")
                         .frame(width: side, height: side)
                         .shadow(color: (cover.tint ?? .black).opacity(0.55), radius: 14, x: -3, y: 4)
-                        .rotationEffect(.degrees(hover ? 28 : 24))
-                        .scaleEffect(hover ? 1.04 : 1)
+                        .rotationEffect(.degrees(fanned ? 28 : 24))
+                        .scaleEffect(away ? 0.85 : (fanned ? 1.04 : 1))
                         .position(center)
+                        .opacity(away ? 0 : 1)
                 }
                 Text(item.title)
                     .font(.system(size: d.v(15, 17), weight: .bold))
@@ -811,6 +970,9 @@ struct CategoryTile: View {
             .animation(.easeOut(duration: 0.45), value: cover?.url)
             // The fan opens and closes with a soft spring.
             .animation(.spring(response: 0.42, dampingFraction: 0.82), value: hover)
+            .animation(.spring(response: 0.5, dampingFraction: 0.8), value: dealing)
+            // Stepping aside is quick; coming back is soft.
+            .animation(away ? .easeIn(duration: 0.15) : .easeOut(duration: 0.4), value: away)
         }
         .aspectRatio(Self.aspect, contentMode: .fit)
         // Drawn as one picture: the tilted, glowing cover costs nothing while scrolling.
@@ -824,6 +986,20 @@ struct CategoryTile: View {
         .task(id: item.id) {
             guard cover == nil else { return }
             cover = await CategoryCovers.shared.cover(for: item)
+        }
+        // A panel moves: the covers step aside; once the cards are in their new places the
+        // covers come back and the hand opens once, then settles.
+        .onChange(of: app.layoutSettling) { _, settling in
+            if settling {
+                away = true
+            } else {
+                away = false
+                dealing = true
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 550_000_000)
+                    dealing = false
+                }
+            }
         }
     }
 }

@@ -132,7 +132,7 @@
       uid: nextId('i'), kind: 'unknown', title: '', subtitle: '', thumbnail: null,
       videoId: null, browseId: null, params: null, playlistId: null,
       artists: [], album: null, duration: null, explicit: false,
-      play: null, wide: false, color: null, setVideoId: null,
+      play: null, wide: false, color: null, setVideoId: null, plays: null,
     }, o);
   }
 
@@ -232,8 +232,15 @@
       if (t && !DUR.test(t)) parts.push(t);
     }
     it.subtitle = parts.join(' • ').replace(/\s*•\s*\d{1,2}:\d{2}(:\d{2})?\s*$/, '');
+    // "4,3 Mn dinlenme" (album pages): the count on its own, for the Plays column.
+    const counted = it.subtitle.split(' • ').find((t) => PLAYS.test(t));
+    if (counted) it.plays = playNumber(counted);
     return it;
   }
+
+  // A play / view count's words, in either language: "4,3 Mn dinlenme", "12 B görüntüleme".
+  const PLAYS = /\d.*(dinlenme|görüntüleme|izlenme|\bplays?\b|\bviews?\b)/i;
+  const playNumber = (t) => t.replace(/\s*(dinlenme|görüntüleme|izlenme|plays?|views?)\s*$/i, '').trim();
 
   function parseNavButton(r) {
     const be = r.clickCommand?.browseEndpoint;
@@ -428,16 +435,39 @@
       secondSubtitle: text(h.secondSubtitle),
       strapline: text(h.straplineTextOne),
       description: text(h.description?.musicDescriptionShelfRenderer?.description) || text(h.description),
-      thumbnail: style === 'artist' ? bestThumb(h.thumbnail || h.foregroundThumbnail, 1200) : bestThumb(h.thumbnail, 800),
+      // A podcast's header can come without its cover; the page's microformat has it.
+      thumbnail: style === 'artist' ? bestThumb(h.thumbnail || h.foregroundThumbnail, 1200)
+        : (bestThumb(h.thumbnail, 800) || bestThumb(findKey(resp, 'microformatDataRenderer')?.thumbnail, 800)),
       strapThumb: bestThumb(h.straplineThumbnail, 96),
       subscribers: text(sub?.longSubscriberCountText) || text(sub?.subscriberCountText) || text(h.monthlyListenerCount) || '',
       play: btns.PLAY_ARROW || null,
       shuffle: btns.MUSIC_SHUFFLE || null,
       radio: btns.MIX || null,
       artists: links(h.straplineTextOne?.runs).concat(links(h.subtitle?.runs)),
+      saved: librarySaved(h),
       ...subscription(sub),
       ...editInfo(resp),
     };
+  }
+
+  // Albums and others' playlists: whether the account keeps them in its library. The
+  // header's save button is a toggle (LIBRARY_ADD ↔ LIBRARY_SAVED); some pages carry a
+  // like button for the list instead. null: the page doesn't say.
+  function librarySaved(h) {
+    let saved = null;
+    (function walk(n, d) {
+      if (saved !== null || !n || typeof n !== 'object' || d > 25) return;
+      if (Array.isArray(n)) { n.forEach((x) => walk(x, d + 1)); return; }
+      const t = n.toggleButtonRenderer;
+      if (t && /LIBRARY_(ADD|SAVED|REMOVE)/.test(`${t.defaultIcon?.iconType} ${t.toggledIcon?.iconType}`)) {
+        saved = !!t.isToggled;
+        return;
+      }
+      const l = n.likeButtonRenderer;
+      if (l && l.target?.playlistId && l.likeStatus) { saved = l.likeStatus === 'LIKE'; return; }
+      for (const k in n) { if (!SKIP.has(k)) walk(n[k], d + 1); }
+    })(h, 0);
+    return saved;
   }
 
   // Artist channels: whether the account is subscribed, and what (un)subscribing needs.
@@ -820,8 +850,100 @@
           if (i.videoId && i.duration) lengths.set(i.videoId, i.duration);
         }
         for (const i of missing) i.duration = lengths.get(i.videoId) || i.duration;
+        // That list can come without lengths too: its play queue always has them.
+        const still = missing.filter((i) => !i.duration);
+        if (still.length) {
+          const found = await queueLengths(id.slice(2), new Set(still.map((i) => i.videoId)), 2);
+          for (const i of still) i.duration = found[i.videoId] || null;
+        }
       } catch (e) { /* the list stays as it came */ }
     }));
+  }
+
+  // A list's lengths from its play queue, which has them where the list's page doesn't
+  // (podcast episodes): page by page until every one in `want` is found (or, with no
+  // `want`, all of the first `pages` pages).
+  async function queueLengths(playlistId, want, pages) {
+    const out = {};
+    const base = { isAudioOnly: true, enablePersistentPlaylistPanel: true };
+    const r = await api('next', Object.assign({ playlistId: plId(playlistId) }, base));
+    let rows = panelRows(r.contents);
+    let token = panelToken(r);
+    for (let page = 0; page < pages; page++) {
+      for (const { p } of rows) {
+        const length = text(p.lengthText);
+        if (!length || (want && !want.has(p.videoId))) continue;
+        out[p.videoId] = length;
+        if (want) want.delete(p.videoId);
+      }
+      if ((want && !want.size) || !token) break;
+      let c;
+      try { c = await api('next', base, ctokenQuery(token)); } catch (e) { break; }
+      rows = panelRows(c.continuationContents);
+      const next = panelToken(c.continuationContents);
+      token = next === token ? null : next;
+    }
+    return out;
+  }
+
+  // The artists of some of a list's songs, with their pages, from the list's play queue:
+  // an album's page names the artists of other people's songs (a soundtrack's) without a
+  // link to them; the queue links each one.
+  async function queueArtists(playlistId, want) {
+    const out = {};
+    const base = { isAudioOnly: true, enablePersistentPlaylistPanel: true };
+    const r = await api('next', Object.assign({ playlistId: plId(playlistId) }, base));
+    let rows = panelRows(r.contents);
+    let token = panelToken(r);
+    for (let page = 0; page < 3; page++) {
+      for (const { p } of rows) {
+        if (!want.has(p.videoId)) continue;
+        const seen = new Set();
+        const artists = links(p.longBylineText?.runs).filter((a) => !seen.has(a.id) && seen.add(a.id));
+        if (artists.length) { out[p.videoId] = artists; want.delete(p.videoId); }
+      }
+      if (!want.size || !token) break;
+      let c;
+      try { c = await api('next', base, ctokenQuery(token)); } catch (e) { break; }
+      rows = panelRows(c.continuationContents);
+      const next = panelToken(c.continuationContents);
+      token = next === token ? null : next;
+    }
+    return out;
+  }
+
+  // Play counts of a playlist's songs from the same list on YouTube, whose rows carry the
+  // views that YouTube Music's playlist page leaves out: page by page until every one in
+  // `want` is found (or, with no `want`, all of the first `pages` pages).
+  async function webPlays(playlistId, want, pages) {
+    const out = {};
+    let r = await webApi('browse', { browseId: 'VL' + plId(playlistId) });
+    for (let page = 0; page < pages && r; page++) {
+      (function walk(n) {
+        if (!n || typeof n !== 'object') return;
+        if (Array.isArray(n)) { n.forEach(walk); return; }
+        const pv = n.playlistVideoRenderer;
+        const lv = n.lockupViewModel;
+        let id = null, info = '';
+        if (pv && pv.videoId) { id = pv.videoId; info = text(pv.videoInfo); }
+        else if (lv && lv.contentId) {
+          id = lv.contentId;
+          const rows = findKey(lv, 'metadataRows') || [];
+          info = rows.flatMap((row) => (row.metadataParts || []).map((x) => x.text?.content || '')).join(' • ');
+        }
+        if (id) {
+          const part = info.split(/\s*•\s*/).find((t) => PLAYS.test(t));
+          if (part && !(id in out) && (!want || want.has(id))) out[id] = playNumber(part);
+          return;
+        }
+        for (const k in n) { if (!SKIP.has(k)) walk(n[k]); }
+      })(r);
+      if (want && [...want].every((v) => v in out)) break;
+      const token = ytNextToken(r);
+      if (!token) break;
+      try { r = await webApi('browse', { continuation: token }); } catch (e) { break; }
+    }
+    return out;
   }
 
   // A page whose cards sit outside any shelf (some "see all" pages): them as one row. A
@@ -1027,9 +1149,54 @@
 
 
     async browse({ browseId, params }) {
-      const r = await api('browse', params ? { browseId, params } : { browseId });
+      // A podcast's page leaves its episodes' lengths out: its play queue, read at the same
+      // time, has them, so the page comes with them.
+      const podcastLengths = browseId.startsWith('MPSP')
+        ? queueLengths(browseId.slice(4), null, 4).catch(() => ({})) : null;
+      // A playlist's page has no play counts: its first hundred songs' come from the same
+      // list on YouTube, read at the same time (not Beğenilen müzikler, which isn't one there).
+      const playlistPlays = browseId.startsWith('VL') && !['VLLM', 'VLSE'].includes(browseId)
+        ? webPlays(browseId.slice(2), null, 1).catch(() => ({})) : null;
+      let r = await api('browse', params ? { browseId, params } : { browseId });
       let sections = extractSections(r);
+      // A podcast's page ("MPSP" + its playlist id) can come back empty, with only its
+      // microformat: read it again without the card's params, then as the playlist of its
+      // episodes, which carries the same title, cover, author and episodes.
+      if (!sections.length && browseId.startsWith('MPSP')) {
+        const tries = (params ? [{ browseId }] : []).concat([{ browseId: 'VL' + browseId.slice(4) }]);
+        for (const body of tries) {
+          let again;
+          try { again = await api('browse', body); } catch (e) { continue; }
+          const found = extractSections(again);
+          if (found.length) { r = again; sections = found; break; }
+        }
+      }
       if (browseId.startsWith('UC')) await fillLengths(sections);
+      // An album's songs by other artists, named without a link: linked from its queue.
+      if (browseId.startsWith('MPRE')) {
+        const songs = sections.flatMap((x) => x.items).filter((i) => i.videoId);
+        const unlinked = songs.filter((i) => !i.artists.length
+          && i.subtitle.split(' • ').some((t) => t && !PLAYS.test(t)));
+        const list = songs.find((i) => i.playlistId)?.playlistId;
+        if (unlinked.length && list) {
+          try {
+            const found = await queueArtists(list, new Set(unlinked.map((i) => i.videoId)));
+            for (const i of unlinked) if (found[i.videoId]) i.artists = found[i.videoId];
+          } catch (e) { /* the names stay as plain text */ }
+        }
+      }
+      if (playlistPlays) {
+        const plays = await playlistPlays;
+        for (const s of sections) for (const i of s.items) {
+          if (i.videoId && !i.plays && plays[i.videoId]) i.plays = plays[i.videoId];
+        }
+      }
+      if (podcastLengths) {
+        const lengths = await podcastLengths;
+        for (const s of sections) for (const i of s.items) {
+          if (i.videoId && !i.duration && lengths[i.videoId]) i.duration = lengths[i.videoId];
+        }
+      }
       let shape = null;
       if (!sections.length) ({ sections, shape } = await looseSections(r, browseId, params));
       return { header: parseHeader(r), chips: chipsOf(r), sections, continuation: sectionListToken(r), shape };
@@ -1307,6 +1474,37 @@
       };
     },
 
+    // Where a link leads, as YouTube reads it: handles (youtube.com/@name), podcast and
+    // other addresses the app doesn't read itself. YouTube Music first, then YouTube.
+    async resolveLink({ url }) {
+      let r;
+      try { r = await api('navigation/resolve_url', { url }); } catch (e) { r = await webApi('navigation/resolve_url', { url }); }
+      const ep = r.endpoint || {};
+      if (ep.watchEndpoint) return { videoId: ep.watchEndpoint.videoId || null, playlistId: ep.watchEndpoint.playlistId || null };
+      if (ep.watchPlaylistEndpoint) return { playlistId: ep.watchPlaylistEndpoint.playlistId || null };
+      const b = ep.browseEndpoint;
+      if (b && b.browseId) {
+        return { browseId: b.browseId,
+          pageType: b.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType || null };
+      }
+      throw new Error(uiTurkish ? 'Bağlantının gittiği yer bulunamadı' : 'Nothing was found behind this link');
+    },
+
+    // Play counts a list's page left out, from the same list on YouTube (see webPlays).
+    async playCounts({ playlistId, videoIds }) {
+      const want = new Set(videoIds || []);
+      if (!playlistId || !want.size) return {};
+      return webPlays(playlistId, want, 10);
+    },
+
+    // The lengths of a list's songs or episodes that its page left out (podcast episodes
+    // come without one), from the list's play queue (see queueLengths).
+    async lengths({ playlistId, videoIds }) {
+      const want = new Set(videoIds || []);
+      if (!playlistId || !want.size) return {};
+      return queueLengths(playlistId, want, 8);
+    },
+
     async queueMore({ token }) {
       const r = await api('next', { isAudioOnly: true, enablePersistentPlaylistPanel: true }, ctokenQuery(token));
       const next = panelToken(r.continuationContents);
@@ -1439,6 +1637,8 @@
         id = findKey(r, 'audioPlaylistId') || findKey(r, 'playlistId');
       }
       if (!id && browseId && browseId.startsWith('VL')) id = browseId;
+      // A podcast is kept by the playlist of its episodes ("MPSP" + its id).
+      if (!id && browseId && browseId.startsWith('MPSP')) id = browseId.slice(4);
       if (!id) throw new Error(uiTurkish ? 'Bu içeriğin çalma listesi bulunamadı' : 'No playlist was found for this item');
       await api(on ? 'like/like' : 'like/removelike', { target: { playlistId: plId(id) } });
       return true;
